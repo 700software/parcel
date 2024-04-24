@@ -6,14 +6,8 @@ edition = "2021"
 
 [dependencies]
 bitflags = "*"
-crossbeam-channel = "0.5.6"
 glob-match = "0.2.1"
 indexmap = "*"
-lazy_static = "*"
-mimalloc = { version = "*", default-features = false }
-nodejs-semver = "4.0.0"
-parcel-js-swc-core = { path = "../../packages/transformers/js/core" }
-parcel-resolver = { path = "../../packages/utils/node-resolver-rs" }
-petgraph = "*"
-rayon = "1.7.0"
+pathdiff = "0.2.1"
 serde = "1.0.123"
+serde_json5 = "0.1.0"

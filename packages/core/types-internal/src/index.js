@@ -1158,6 +1158,11 @@ export type Validator = DedicatedThreadValidator | MultiThreadValidator;
  * @section transformer
  */
 export type Transformer<ConfigType> = {|
+  /**
+   * Plugin will load configuration from disk or anywhere in this method
+   *
+   * Parcel will hold this value
+   */
   loadConfig?: ({|
     config: Config,
     options: PluginOptions,

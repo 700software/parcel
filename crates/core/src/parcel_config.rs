@@ -1,234 +1,165 @@
-use glob_match::glob_match;
-use indexmap::IndexMap;
-use std::path::{Path, PathBuf};
+use std::{
+  fs::canonicalize,
+  path::{Path, PathBuf},
+};
 
-#[derive(Debug)]
-pub enum PipelineNode {
-  Plugin(PluginNode),
-  Spread,
+use pathdiff::diff_paths;
+
+use crate::config::Config;
+
+struct Fs {
+  cwd: fn() -> PathBuf,
+  find_ancestor_file: fn(files: Vec<String>) -> String,
+  read_file: fn(path: &PathBuf, encoding: String) -> Result<String, String>,
 }
 
-#[derive(Debug)]
-pub struct PipelineMap {
-  map: IndexMap<String, Vec<PipelineNode>>,
+struct PackageManager {
+  resolve: fn(specifier: String, from: &Path) -> Result<(), String>,
 }
 
-impl PipelineMap {
-  pub fn get(&self, path: &Path, pipeline: &Option<impl AsRef<str>>) -> Vec<PluginNode> {
-    let basename = path.file_name().unwrap().to_str().unwrap();
-    let path = path.as_os_str().to_str().unwrap();
-
-    let mut matches = Vec::new();
-    if let Some(pipeline) = pipeline {
-      let exact_match = self
-        .map
-        .iter()
-        .find(|(pattern, _)| is_match(pattern, path, basename, pipeline.as_ref()));
-
-      if let Some((_, m)) = exact_match {
-        matches.push(m);
-      } else {
-        return Vec::new();
-      }
-    }
-
-    for (pattern, pipeline) in self.0.iter() {
-      if is_match(pattern, path, basename, "") {
-        matches.push(pipeline);
-      }
-    }
-
-    if matches.is_empty() {
-      return Vec::new();
-    }
-
-    fn flatten(matches: &mut Vec<&Vec<PipelineNode>>) -> Vec<PluginNode> {
-      matches
-        .remove(0)
-        .into_iter()
-        .flat_map(|node| {
-          match node {
-            PipelineNode::Plugin(plugin) => vec![plugin.clone()],
-            PipelineNode::Spread => {
-              // TODO: error if more than one spread
-              flatten(matches)
-            }
-          }
-        })
-        .collect()
-    }
-
-    flatten(&mut matches)
-  }
-}
-
-#[derive(Debug)]
 pub struct ParcelConfig {
-  resolvers: Vec<PluginNode>,
-  transformers: PipelineMap,
-  bundler: Option<PluginNode>,
-  namers: Vec<PluginNode>,
-  runtimes: Vec<PluginNode>,
-  packagers: IndexMap<String, PluginNode>,
-  optimizers: PipelineMap,
-  validators: PipelineMap,
-  compressors: PipelineMap,
-  reporters: Vec<PluginNode>,
+  fs: Fs,
+  package_manager: PackageManager,
 }
-
-#[derive(Clone, Debug)]
-pub struct PluginNode {
-  pub key_path: Option<String>,
-  pub package_name: String,
-  pub resolve_from: PathBuf,
-}
-
-pub struct ProjectPath(String);
-
-type Result<T> = std::result::Result<T, String>;
 
 impl ParcelConfig {
-  pub fn validators(&self, path: &Path) -> Result<Vec<PluginNode>> {
-    let pipeline: &Option<&str> = &None;
-    let validators = self.validators.get(path, pipeline);
+  fn resolve_config(&self, project_root: &Path, path: &PathBuf) -> Result<&Path, String> {
+    // TODO Add caching
 
-    Ok(validators)
+    let resolved = self
+      .fs
+      .find_ancestor_file([".parcelrc"], path.parent(), project_root)?;
+
+    Ok(resolved)
   }
 
-  pub fn transformers(
+  fn resolve_extends(&self, config_path: &Path, extend: &String) -> Result<PathBuf, String> {
+    if extend.starts_with(".") {
+      let dir = config_path.parent().unwrap_or(config_path);
+      return canonicalize(dir.join(extend)).map_err(|e| e.to_string());
+    }
+
+    let resolution = self.package_manager.resolve(extend, config_path)?;
+
+    // TODO Error handling
+    canonicalize(resolution.resolved).map_err(|e| e.to_string())
+  }
+
+  fn process_config(
     &self,
     path: &Path,
-    pipeline: &Option<impl AsRef<str>>,
-    allow_empty: bool,
-  ) -> Result<Vec<PluginNode>> {
-    let transformers = self.transformers.get(path, pipeline);
+    config: Config,
+  ) -> Result<(Config, Vec<&Path>), impl AsRef<str>> {
+    // TODO Check if validation needed or done by serde
+    // TODO Named reserved pipelines
 
-    if transformers.is_empty() {
-      if allow_empty {
-        return Ok(Vec::new());
-      }
+    let files = vec![path];
+    if (config.extends.is_empty()) {
+      return Ok((config, files));
+    }
 
-      let path = path.as_os_str().to_str().unwrap();
+    let errors;
+    // TODO Ensure array extends in serde?
+    config.extends.iter().flat_map(|config| {
+      let extended_file = self.resolve_extends(path, ext);
+      files.push(extended_file);
+    });
+    // for (let ext of exts) {
+    //   try {
+    //     let resolved = await resolveExtends(ext, filePath, key, options);
+    //     extendedFiles.push(resolved);
+    //     let {extendedFiles: moreExtendedFiles, config: nextConfig} =
+    //       await processExtendedConfig(filePath, key, ext, resolved, options);
+    //     extendedFiles = extendedFiles.concat(moreExtendedFiles);
+    //     extStartConfig = extStartConfig
+    //       ? mergeConfigs(extStartConfig, nextConfig)
+    //       : nextConfig;
+    //   } catch (err) {
+    //     errors.push(err);
+    //   }
+    // }
 
-      return match pipeline {
-        None => self.missing_plugin_error(format!("No transformers found for {}.", path)),
-        Some(pipeline) => self.missing_plugin_error(format!(
-          "No transformers found for {} with pipeline {:?}.",
-          path,
-          pipeline.as_ref()
-        )),
+    if errors {
+      return Err("Lots of errors");
+      // throw new ThrowableDiagnostic({
+      //   diagnostic: errors.flatMap(e => e.diagnostics),
+      // });
+    }
+
+    Ok((config, files));
+  }
+
+  pub fn load(
+    &self,
+    project_root: &Path,
+    config: Option<String>,
+    fallback_config: Option<String>,
+  ) -> Result<(), impl AsRef<str>> {
+    let cwd = self.fs.cwd();
+    let resolve_from = {
+      let relative = diff_paths(project_root, cwd);
+      // TODO check logic
+      let is_cwd_inside_root = !relative.is_some_and(|p| p.starts_with("..") && p.is_absolute());
+      let dir = if is_cwd_inside_root {
+        cwd
+      } else {
+        project_root
       };
+
+      dir.join("index")
+    };
+
+    let config_path = match config {
+      Some(config) => self.package_manager.resolve(config, resolve_from)?.resolved,
+      None => self.resolve_config(project_root, &resolve_from),
+    };
+
+    let used_fallback = false;
+    if !config_path.is_ok() && fallback_config.is_some() {
+      used_fallback = true;
+      config_path = self
+        .package_manager
+        .resolve(fallback_config, resolve_from)?
+        .resolved;
     }
 
-    Ok(transformers)
-  }
-
-  pub fn bundler<P: AsRef<str>>(&self) -> Result<PluginNode> {
-    match self.bundler.clone() {
-      None => self.missing_plugin_error(String::from("No bundler specified in .parcelrc config")),
-      Some(bundler) => Ok(bundler),
-    }
-  }
-
-  pub fn namers(&self) -> Result<Vec<PluginNode>> {
-    if self.namers.is_empty() {
-      return self.missing_plugin_error(String::from(
-        "No namer plugins specified in .parcelrc config",
-      ));
+    if config_path.is_err() {
+      return Err("Unable to locate .parcelrc");
     }
 
-    Ok(self.namers.clone())
+    let config_path = config_path.unwrap();
+    let config = self.fs.read_file(config_path, "utf8").map_err(|e| {
+      format!(
+        "Unable to locate parcel config at {}",
+        diff_paths(project_root, config_path).unwrap_or_default(config_path),
+      )
+    })?;
+
+    let mut parcel_config = self.process_config(
+      config_path,
+      serde_json5::from_str(config)
+        .map_err(|e| format!("Failed to parse .parcelrc at {}", config_path).as_str())?,
+    );
+
+    //   let {config, extendedFiles}: ParcelConfigChain = await parseAndProcessConfig(
+    //     configPath,
+    //     contents,
+    //     options,
+    //   );
+
+    //   TODO
+    //   if (options.additionalReporters.length > 0) {
+    //     config.reporters = [
+    //       ...options.additionalReporters.map(({packageName, resolveFrom}) => ({
+    //         packageName,
+    //         resolveFrom,
+    //       })),
+    //       ...(config.reporters ?? []),
+    //     ];
+    //   }
+
+    // return {config, extendedFiles, usedDefault};
+
+    Ok(parcel_config)
   }
-
-  pub fn runtimes(&self) -> Result<Vec<PluginNode>> {
-    if self.runtimes.is_empty() {
-      return Ok(Vec::new());
-    }
-
-    Ok(self.runtimes.clone())
-  }
-
-  pub fn packager(&self, path: &Path) -> Result<PluginNode> {
-    let basename = path.file_name().unwrap().to_str().unwrap();
-    let path = path.as_os_str().to_str().unwrap();
-    let packager = self
-      .packagers
-      .iter()
-      .find(|(pattern, _)| is_match(pattern, path, basename, ""));
-
-    match packager {
-      None => self.missing_plugin_error(format!("No packager found for {}", path)),
-      Some(pkgr) => Ok(pkgr.1.clone()),
-    }
-  }
-
-  pub fn optimizers(
-    &self,
-    path: &Path,
-    pipeline: &Option<impl AsRef<str>>,
-  ) -> Result<Vec<PluginNode>> {
-    let mut use_empty_pipeline = false;
-    // If a pipeline is specified, but it doesn't exist in the optimizers config, ignore it.
-    // Pipelines for bundles come from their entry assets, so the pipeline likely exists in transformers.
-    if let Some(p) = pipeline {
-      let prefix = format!("{}:", p.as_ref());
-      if !self
-        .optimizers
-        .map
-        .keys()
-        .any(|glob| glob.starts_with(&prefix))
-      {
-        use_empty_pipeline = true;
-      }
-    }
-
-    let optimizers = self
-      .optimizers
-      .get(path, if use_empty_pipeline { &None } else { pipeline });
-    if optimizers.is_empty() {
-      return Ok(Vec::new());
-    }
-
-    Ok(optimizers)
-  }
-
-  pub fn compressors(&self, path: &Path) -> Result<Vec<PluginNode>> {
-    let pipeline: &Option<&str> = &None;
-    let compressors = self.compressors.get(path, pipeline);
-    if compressors.is_empty() {
-      let path = path.as_os_str().to_str().unwrap();
-      return self.missing_plugin_error(format!("No compressors found for {}", path));
-    }
-
-    Ok(compressors)
-  }
-
-  pub fn resolvers(&self) -> Result<Vec<PluginNode>> {
-    if self.resolvers.is_empty() {
-      return self.missing_plugin_error(String::from("No resolvers specified in .parcelrc config"));
-    }
-
-    Ok(self.resolvers.clone())
-  }
-
-  pub fn reporters(&self) -> Result<Vec<PluginNode>> {
-    Ok(self.reporters.clone())
-  }
-
-  fn missing_plugin_error<T>(&self, msg: String) -> Result<T> {
-    Err(msg)
-  }
-}
-
-fn is_match(pattern: &str, path: &str, basename: &str, pipeline: &str) -> bool {
-  let (pattern_pipeline, glob) = pattern.split_once(':').unwrap_or(("", pattern));
-  if pipeline.is_empty() && pattern_pipeline.is_empty() {
-    return false;
-  }
-
-  if !pipeline.is_empty() && pipeline != pattern_pipeline {
-    return false;
-  }
-
-  return glob_match(glob, basename) || glob_match(glob, path);
 }
