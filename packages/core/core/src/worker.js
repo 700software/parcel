@@ -24,9 +24,9 @@ import ParcelConfig from './ParcelConfig';
 import {registerCoreWithSerializer} from './registerCoreWithSerializer';
 import {clearBuildCaches} from './buildCache';
 import {init as initSourcemaps} from '@parcel/source-map';
-import {init as initRust} from '@parcel/rust';
+import {init as initRust, createParcelConfig} from '@parcel/rust';
 import WorkerFarm from '@parcel/workers';
-import {setFeatureFlags} from '@parcel/feature-flags';
+import {getFeatureFlag, setFeatureFlags} from '@parcel/feature-flags';
 
 import '@parcel/cache'; // register with serializer
 import '@parcel/package-manager';
@@ -77,10 +77,15 @@ async function loadConfig(cachePath, options) {
   let processedConfig = nullthrows(
     await options.cache.get<ProcessedParcelConfig>(cachePath),
   );
-  config = new ParcelConfig(processedConfig, options);
-  parcelConfigCache.set(cachePath, config);
 
   setFeatureFlags(options.featureFlags);
+
+  if (getFeatureFlag('useRustCore')) {
+    config = createParcelConfig(processedConfig);
+  } else {
+    config = new ParcelConfig(processedConfig, options);
+  }
+  parcelConfigCache.set(cachePath, config);
 
   return config;
 }

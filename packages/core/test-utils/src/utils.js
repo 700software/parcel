@@ -10,6 +10,7 @@ import type {
   InitialParcelOptions,
   PackagedBundle,
 } from '@parcel/types';
+import {DEFAULT_FEATURE_FLAGS} from '@parcel/feature-flags';
 import type {FileSystem} from '@parcel/fs';
 import type WorkerFarm from '@parcel/workers';
 import type {IncomingMessage} from 'http';
@@ -129,6 +130,10 @@ export function getParcelOptions(
           browsers: ['last 1 Chrome version'],
           node: '8',
         },
+      },
+      featureFlags: {
+        ...DEFAULT_FEATURE_FLAGS,
+        useRustCore: true,
       },
     },
     opts,

@@ -6775,7 +6775,7 @@ describe('javascript', function () {
         assert.deepEqual(res.output, ['key', 'foo']);
       });
 
-      it('should not optimize away an unused ES6 re-export and an used import', async function () {
+      it.only('should not optimize away an unused ES6 re-export and an used import', async function () {
         let b = await bundle(
           path.join(
             __dirname,

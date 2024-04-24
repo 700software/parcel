@@ -1,4 +1,6 @@
 // @flow strict-local
+import {getFeatureFlag} from '@parcel/feature-flags';
+import {createParcelConfig} from '@parcel/rust';
 import type {Async} from '@parcel/types';
 import type {SharedReference} from '@parcel/workers';
 import type {StaticRunOpts} from '../RequestTracker';
@@ -42,7 +44,11 @@ export default function createValidationRequest(
         ),
       );
 
-      let config = new ParcelConfig(processedConfig, options);
+      if (getFeatureFlag('useRustCore')) {
+        config = createParcelConfig(processedConfig);
+      } else {
+        config = new ParcelConfig(processedConfig, options);
+      }
       let trackedRequestsDesc = assetRequests.filter(request => {
         return config.getValidatorNames(request.filePath).length > 0;
       });

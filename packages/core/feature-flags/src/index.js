@@ -9,6 +9,7 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   exampleFeature: false,
   configKeyInvalidation: false,
   dfsFasterRefactor: false,
+  useRustCore: false,
 };
 
 let featureFlagValues: FeatureFlags = {...DEFAULT_FEATURE_FLAGS};

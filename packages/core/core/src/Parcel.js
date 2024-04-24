@@ -12,18 +12,18 @@ import type {
   ParcelResolveResult,
 } from '@parcel/types';
 import path from 'path';
-import type {ParcelOptions} from './types';
+import ThrowableDiagnostic, {anyToDiagnostic} from '@parcel/diagnostic';
 // eslint-disable-next-line no-unused-vars
 import type {FarmOptions, SharedReference} from '@parcel/workers';
 import type {Diagnostic} from '@parcel/diagnostic';
 
 import invariant from 'assert';
-import ThrowableDiagnostic, {anyToDiagnostic} from '@parcel/diagnostic';
 import {assetFromValue} from './public/Asset';
 import {PackagedBundle} from './public/Bundle';
 import BundleGraph from './public/BundleGraph';
 import WorkerFarm from '@parcel/workers';
 import nullthrows from 'nullthrows';
+import type {ParcelOptions} from './types';
 import {BuildAbortError} from './utils';
 import {loadParcelConfig} from './requests/ParcelConfigRequest';
 import ReporterRunner from './ReporterRunner';
@@ -46,14 +46,19 @@ import {createEnvironment} from './Environment';
 import {createDependency} from './Dependency';
 import {Disposable} from '@parcel/events';
 import {init as initSourcemaps} from '@parcel/source-map';
-import {init as initRust, initSentry, closeSentry} from '@parcel/rust';
+import {
+  init as initRust,
+  initSentry,
+  createParcelConfig,
+  closeSentry,
+} from '@parcel/rust';
 import {
   fromProjectPath,
   toProjectPath,
   fromProjectPathRelative,
 } from './projectPath';
 import {tracer} from '@parcel/profiler';
-import {setFeatureFlags} from '@parcel/feature-flags';
+import {getFeatureFlag, setFeatureFlags} from '@parcel/feature-flags';
 
 registerCoreWithSerializer();
 
@@ -115,10 +120,15 @@ export default class Parcel {
       this.#initialOptions,
     );
     this.#resolvedOptions = resolvedOptions;
-    let {config} = await loadParcelConfig(resolvedOptions);
-    this.#config = new ParcelConfig(config, resolvedOptions);
 
     setFeatureFlags(resolvedOptions.featureFlags);
+
+    let {config} = await loadParcelConfig(resolvedOptions);
+    if (getFeatureFlag('useRustCore')) {
+      this.#config = createParcelConfig(config);
+    } else {
+      this.#config = new ParcelConfig(config, resolvedOptions);
+    }
 
     if (this.#initialOptions.workerFarm) {
       if (this.#initialOptions.workerFarm.ending) {

@@ -13,4 +13,8 @@ export type FeatureFlags = {|
    * Refactors dfsNew to use an iterative approach.
    */
   +dfsFasterRefactor: boolean,
+  /**
+   * Enables the new Rust core of Parcel
+   */
+  +useRustCore: boolean,
 |};

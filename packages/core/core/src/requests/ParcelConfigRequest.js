@@ -28,6 +28,8 @@ import ThrowableDiagnostic, {
   escapeMarkdown,
   md,
 } from '@parcel/diagnostic';
+import {getFeatureFlag} from '@parcel/feature-flags';
+import {createParcelConfig} from '@parcel/rust';
 import {parse} from 'json5';
 import path from 'path';
 import invariant from 'assert';
@@ -120,7 +122,11 @@ export function getCachedParcelConfig(
     return config;
   }
 
-  config = new ParcelConfig(processedConfig, options);
+  if (getFeatureFlag('useRustCore')) {
+    config = createParcelConfig(processedConfig);
+  } else {
+    config = new ParcelConfig(processedConfig, options);
+  }
 
   parcelConfigCache.set(cachePath, config);
   return config;

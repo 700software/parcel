@@ -55,6 +55,7 @@ export const DEFAULT_OPTIONS: ParcelOptions = {
     exampleFeature: false,
     configKeyInvalidation: false,
     dfsFasterRefactor: false,
+    useRustCore: true,
   },
 };
 
