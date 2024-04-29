@@ -1,15 +1,15 @@
 use napi::{JsObject, Result};
 use napi_derive::napi;
 
-use crate::parcel_config::{PipelineMap, PipelinesMap, PluginNode};
+use crate::parcel_config::{PipelinesMap, PluginNode};
 
 #[napi]
 pub fn create_parcel_config(config: JsObject) -> Result<bool> {
   let bundler: Result<Option<PluginNode>> = config.get("bundler");
   println!("got bundler {:?}", bundler);
 
-  let compressors: Result<Option<PipelinesMap>> = config.get("compressors");
-  println!("got compressors {:?}", compressors);
+  // let compressors: Result<Option<PipelinesMap>> = config.get("compressors");
+  // println!("got compressors {:?}", compressors);
 
   let namers: Result<Option<Vec<PluginNode>>> = config.get("namers");
   println!("got namers {:?}", namers);

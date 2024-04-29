@@ -1,17 +1,7 @@
 use glob_match::glob_match;
-use indexmap::{indexmap, serde_seq::deserialize, IndexMap};
-use napi::{
-  bindgen_prelude::{FromNapiValue, ToNapiValue},
-  Either, NapiRaw, NapiValue,
-};
+use indexmap::IndexMap;
 use napi_derive::napi;
-use serde::Deserialize;
-use std::{
-  collections::hash_map::DefaultHasher,
-  collections::HashMap,
-  hash::{Hash, Hasher},
-  path::{Path, PathBuf},
-};
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 struct Spread {}
@@ -22,7 +12,6 @@ pub enum PipelineNode {
   Spread(Spread),
 }
 
-// todo test external type
 #[derive(Clone, Debug)]
 pub struct PipelinesMap {
   pub map: IndexMap<String, Vec<PipelineNode>>,
@@ -47,7 +36,7 @@ impl PipelinesMap {
       }
     }
 
-    for (pattern, pipeline) in self.0.iter() {
+    for (pattern, pipeline) in self.map.iter() {
       if is_match(pattern, path, basename, "") {
         matches.push(pipeline);
       }
@@ -79,6 +68,62 @@ impl PipelinesMap {
   }
 }
 
+#[derive(Clone, Debug)]
+pub struct PipelineMap {
+  pub map: IndexMap<String, PluginNode>,
+}
+
+impl PipelineMap {
+  pub fn get(&self, path: &Path, pipeline: &Option<impl AsRef<str>>) -> Option<PluginNode> {
+    let basename = path.file_name().unwrap().to_str().unwrap();
+    let path = path.as_os_str().to_str().unwrap();
+
+    let mut matches = Vec::new();
+    if let Some(pipeline) = pipeline {
+      let exact_match = self
+        .map
+        .iter()
+        .find(|(pattern, _)| is_match(pattern, path, basename, pipeline.as_ref()));
+
+      if let Some((_, m)) = exact_match {
+        matches.push(m);
+      } else {
+        return None;
+      }
+    }
+
+    for (pattern, pipeline) in self.map.iter() {
+      if is_match(pattern, path, basename, "") {
+        matches.push(pipeline);
+      }
+    }
+
+    if matches.is_empty() {
+      return None;
+    }
+
+    // fn flatten(matches: &mut Vec<&Vec<PipelineNode>>) -> Vec<PluginNode> {
+    //   matches
+    //     .remove(0)
+    //     .into_iter()
+    //     .flat_map(|node| {
+    //       // match node {
+    //       //   PipelineNode::Plugin(plugin) => vec![plugin.clone()],
+    //       //   PipelineNode::Spread => {
+    //       //     // TODO: error if more than one spread
+    //       //     flatten(matches)
+    //       //   }
+    //       // }
+    //     })
+    //     .collect()
+    // }
+
+    // flatten(&mut matches)
+
+    None
+  }
+}
+
 #[napi]
 #[derive(Debug)]
 pub struct ParcelConfig {
@@ -86,7 +131,7 @@ pub struct ParcelConfig {
   compressors: PipelinesMap,
   namers: Vec<PluginNode>,
   optimizers: PipelinesMap,
-  packagers: PipelinesMap,
+  packagers: PipelineMap,
   reporters: Vec<PluginNode>,
   resolvers: Vec<PluginNode>,
   runtimes: Vec<PluginNode>,
@@ -173,7 +218,7 @@ impl ParcelConfig {
     let path = path.as_os_str().to_str().unwrap();
     let packager = self
       .packagers
-      .0
+      .map
       .iter()
       .find(|(pattern, _)| is_match(pattern, path, basename, ""));
 
@@ -195,7 +240,7 @@ impl ParcelConfig {
       let prefix = format!("{}:", p.as_ref());
       if !self
         .optimizers
-        .0
+        .map
         .keys()
         .any(|glob| glob.starts_with(&prefix))
       {
