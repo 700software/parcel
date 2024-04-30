@@ -53,11 +53,12 @@ impl FileSystem for MemoryFileSystem {
     None
   }
 
-  fn read_file(&self, file_path: impl AsRef<Path>) -> Result<String, DiagnosticError> {
+  fn read_file(&self, file_path: &impl AsRef<Path>) -> Result<String, DiagnosticError> {
+    let file_path = file_path.as_ref();
     self
       .files
-      .get(file_path.as_ref())
+      .get(file_path)
       .map(|s| String::from(s))
-      .ok_or_else(|| DiagnosticError::new(format!("Failed to read file")))
+      .ok_or_else(|| DiagnosticError::new(format!("Failed to read file {}", file_path.display())))
   }
 }

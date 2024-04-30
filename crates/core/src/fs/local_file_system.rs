@@ -49,7 +49,7 @@ impl FileSystem for LocalFileSystem {
     None
   }
 
-  fn read_file(&self, file_path: impl AsRef<Path>) -> Result<String, DiagnosticError> {
+  fn read_file(&self, file_path: &impl AsRef<Path>) -> Result<String, DiagnosticError> {
     fs::read_to_string(file_path)
       .map_err(|source| DiagnosticError::new_source(format!("Failed to read file"), source))
   }

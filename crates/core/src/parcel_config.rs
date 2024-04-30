@@ -5,23 +5,24 @@ use std::{
 };
 
 use pathdiff::diff_paths;
+use serde_derive::Deserialize;
 
 use crate::{config::Config, fs::file_system::FileSystem};
 use crate::{diagnostic::diagnostic_error::DiagnosticError, package_manager::PackageManager};
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub struct ParcelRc {
-  extends: Vec<String>,
-  resolvers: Vec<String>,
-  transformers: HashMap<String, String>,
+  extends: Option<Vec<String>>,
+  resolvers: Option<Vec<String>>,
+  transformers: Option<HashMap<String, String>>,
   bundler: Option<String>,
-  namers: Vec<String>,
-  runtimes: Vec<String>,
-  packagers: HashMap<String, String>,
-  optimizers: HashMap<String, String>,
-  validators: HashMap<String, String>,
-  compressors: HashMap<String, String>,
-  reporters: Vec<String>,
+  namers: Option<Vec<String>>,
+  runtimes: Option<Vec<String>>,
+  packagers: Option<HashMap<String, String>>,
+  optimizers: Option<HashMap<String, String>>,
+  validators: Option<HashMap<String, String>>,
+  compressors: Option<HashMap<String, String>>,
+  reporters: Option<Vec<String>>,
 }
 
 pub struct ParcelConfig<'a, T, U> {
@@ -86,10 +87,9 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelConfig<'a, T, U> {
     // TODO Check if validation needed or done by serde
     // TODO Named reserved pipelines
 
-    let _files = vec![path];
-    if config.extends.is_empty() {
-      return Err(DiagnosticError::new(String::from("Unimplemented")));
-      // return Ok((config, files));
+    let files = vec![path];
+    if config.extends.is_some_and(|e| e.is_empty()) {
+      return Ok((config, files));
     }
 
     // let errors;
@@ -167,32 +167,12 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelConfig<'a, T, U> {
     }
 
     let config_path = config_path.unwrap();
-    let _config = self.fs.read_file(&config_path).map_err(|source| {
-      DiagnosticError::new_source(
-        format!(
-          "Failed to read parcel config at {}",
-          diff_paths(config_path.clone(), project_root)
-            .unwrap_or(config_path)
-            .as_os_str()
-            .to_str()
-            .unwrap()
-        ),
-        source,
-      )
-    })?;
+    let config = self.fs.read_file(&config_path)?;
 
-    // let mut parcel_config = self.process_config(
-    //   &config_path,
-    //   serde_json5::from_str(&config).map_err(|e| {
-    //     DiagnosticError::new(
-    //       &format!(
-    //         "Failed to parse .parcelrc at {}",
-    //         &config_path.as_os_str().to_str().unwrap()
-    //       )
-    //       .as_str(),
-    //     )
-    //   })?,
-    // );
+    let mut parcel_config = self.process_config(
+      &config_path,
+      serde_json5::from_str(&config).map_err(|source| DiagnosticError::new(source.to_string()))?,
+    );
 
     //   TODO
     //   if (options.additionalReporters.length > 0) {
@@ -356,7 +336,7 @@ mod tests {
       let project_root = project_root();
       let mut package_manager = MockPackageManager::new();
 
-      package_manager_resolution(
+      let scope_config = package_manager_resolution(
         &mut package_manager,
         String::from("@scope/config"),
         project_root.join("index"),
@@ -371,10 +351,8 @@ mod tests {
       assert_eq!(
         err.map_err(|e| e.to_string()),
         Err(
-          DiagnosticError::new(String::from(
-            "Failed to read parcel config at node_modules/@scope/config/index.json: Failed to read file",
-          ))
-          .to_string()
+          DiagnosticError::new(format!("Failed to read file {}", scope_config.display()))
+            .to_string()
         )
       );
     }
@@ -450,7 +428,7 @@ mod tests {
       let project_root = project_root();
       let mut package_manager = MockPackageManager::new();
 
-      package_manager_resolution(
+      let scope_config = package_manager_resolution(
         &mut package_manager,
         String::from("@scope/config"),
         project_root.join("index"),
@@ -465,10 +443,8 @@ mod tests {
       assert_eq!(
         err.map_err(|e| e.to_string()),
         Err(
-          DiagnosticError::new(String::from(
-            "Failed to read parcel config at node_modules/@scope/config/index.json: Failed to read file",
-          ))
-          .to_string()
+          DiagnosticError::new(format!("Failed to read file {}", scope_config.display()))
+            .to_string()
         )
       );
     }
