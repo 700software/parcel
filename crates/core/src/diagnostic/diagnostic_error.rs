@@ -30,7 +30,7 @@ impl fmt::Display for DiagnosticError {
 
     return write!(
       f,
-      "{}: {:?}",
+      "{}: {}",
       self.message,
       self.source.as_ref().unwrap().to_string()
     );

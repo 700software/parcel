@@ -170,8 +170,8 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelConfig<'a, T, U> {
     let _config = self.fs.read_file(&config_path).map_err(|source| {
       DiagnosticError::new_source(
         format!(
-          "Unable to read parcel config at {}",
-          diff_paths(project_root, config_path.clone())
+          "Failed to read parcel config at {}",
+          diff_paths(config_path.clone(), project_root)
             .unwrap_or(config_path)
             .as_os_str()
             .to_str()
@@ -214,28 +214,76 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelConfig<'a, T, U> {
 
 #[cfg(test)]
 mod tests {
+  use std::env;
+
+  use mockall::predicate::eq;
+
+  use crate::package_manager::{MockPackageManager, Resolution};
+
   use super::*;
 
+  fn project_root() -> PathBuf {
+    env::current_dir().unwrap()
+  }
+
+  fn fail_package_manager_resolution(package_manager: &mut MockPackageManager) {
+    package_manager
+      .expect_resolve()
+      .return_once(|specifier, from| {
+        Err(DiagnosticError::new(format!(
+          "Failed to resolve {} from {}",
+          specifier,
+          from.display()
+        )))
+      });
+  }
+
+  fn package_manager_resolution<'a>(
+    package_manager: &mut MockPackageManager,
+    specifier: String,
+    from: PathBuf,
+  ) -> PathBuf {
+    let resolved = project_root()
+      .join("node_modules")
+      .join(specifier.clone())
+      .join("index.json");
+
+    package_manager
+      .expect_resolve()
+      .with(eq(specifier), eq(from))
+      .returning(move |specifier, _from| {
+        Ok(Resolution {
+          resolved: project_root()
+            .join("node_modules")
+            .join(specifier)
+            .join("index.json"),
+        })
+      });
+
+    resolved
+  }
+
   mod empty_config_and_fallback {
+    use crate::fs::memory_file_system::MemoryFileSystem;
+
     use super::*;
-    use crate::{fs::memory_file_system::MemoryFileSystem, package_manager::MockPackageManager};
-    use std::path::PathBuf;
 
     #[test]
     fn errors_on_unfound_parcelrc() {
-      let fs = MemoryFileSystem::default();
-      let package_manager = MockPackageManager::new();
-      let config: ParcelConfig<MemoryFileSystem, MockPackageManager> =
-        ParcelConfig::new(&fs, &package_manager);
+      let project_root = project_root();
 
-      let err = config.load(&PathBuf::from("/"), None, None);
+      let err = ParcelConfig::new(&MemoryFileSystem::default(), &MockPackageManager::new()).load(
+        &project_root,
+        None,
+        None,
+      );
 
       assert_eq!(
         err.map_err(|e| e.to_string()),
         Err(
           DiagnosticError::new(format!(
             "Unable to locate .parcelrc from {}",
-            fs.cwd().as_os_str().to_str().unwrap()
+            project_root.display()
           ))
           .to_string()
         )
@@ -243,27 +291,255 @@ mod tests {
     }
 
     #[test]
-    fn reads_default_parcel_config() {
-      let project_root = PathBuf::from("/");
-      let fs = MemoryFileSystem::new(HashMap::from([(
-        project_root.join(".parcelrc"),
-        String::from("{}"),
-      )]));
-      let package_manager = MockPackageManager::new();
-      let config: ParcelConfig<MemoryFileSystem, MockPackageManager> =
-        ParcelConfig::new(&fs, &package_manager);
+    fn returns_default_parcel_config() {
+      let project_root = project_root();
 
-      let err = config.load(&project_root, None, None);
+      let config = ParcelConfig::new(
+        &MemoryFileSystem::new(HashMap::from([(
+          project_root.join(".parcelrc"),
+          String::from("{}"),
+        )])),
+        &MockPackageManager::new(),
+      )
+      .load(&project_root, None, None);
 
       // TODO...
       assert_eq!(
-        err.map_err(|e| e.to_string()),
+        config.map_err(|e| e.to_string()),
         Err(DiagnosticError::new(String::from("Unimplemented",)).to_string())
       );
     }
   }
 
-  mod config {}
+  mod config {
+    use std::collections::HashMap;
+
+    use crate::{
+      fs::memory_file_system::MemoryFileSystem,
+      package_manager::MockPackageManager,
+      parcel_config::{
+        tests::{
+          fail_package_manager_resolution, package_manager_resolution, project_root,
+          DiagnosticError,
+        },
+        ParcelConfig,
+      },
+    };
+
+    #[test]
+    fn errors_on_unfound_parcelrc_specifier() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      fail_package_manager_resolution(&mut package_manager);
+
+      let err = ParcelConfig::new(&MemoryFileSystem::default(), &package_manager).load(
+        &project_root,
+        Some(String::from("@scope/config")),
+        None,
+      );
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(format!(
+            "Failed to resolve @scope/config from {}",
+            project_root.join("index").display()
+          ))
+          .to_string()
+        )
+      );
+    }
+
+    #[test]
+    fn errors_on_parcelrc_file() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      package_manager_resolution(
+        &mut package_manager,
+        String::from("@scope/config"),
+        project_root.join("index"),
+      );
+
+      let err = ParcelConfig::new(&MemoryFileSystem::default(), &package_manager).load(
+        &project_root,
+        Some(String::from("@scope/config")),
+        None,
+      );
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(String::from(
+            "Failed to read parcel config at node_modules/@scope/config/index.json: Failed to read file",
+          ))
+          .to_string()
+        )
+      );
+    }
+
+    #[test]
+    fn returns_specified_config() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      let scope_config = package_manager_resolution(
+        &mut package_manager,
+        String::from("@scope/config"),
+        project_root.join("index"),
+      );
+
+      let config = ParcelConfig::new(
+        &MemoryFileSystem::new(HashMap::from([
+          (project_root.join(".parcelrc"), String::from("{}")),
+          (scope_config, String::from("{}")),
+        ])),
+        &package_manager,
+      )
+      .load(&project_root, Some(String::from("@scope/config")), None);
+
+      // TODO...
+      assert_eq!(
+        config.map_err(|e| e.to_string()),
+        Err(DiagnosticError::new(String::from("Unimplemented",)).to_string())
+      );
+    }
+  }
+
+  mod fallback_config {
+    use crate::{
+      fs::memory_file_system::MemoryFileSystem,
+      package_manager::MockPackageManager,
+      parcel_config::{
+        tests::{
+          fail_package_manager_resolution, package_manager_resolution, project_root,
+          DiagnosticError,
+        },
+        ParcelConfig,
+      },
+    };
+
+    #[test]
+    fn errors_on_unfound_parcelrc_specifier() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      fail_package_manager_resolution(&mut package_manager);
+
+      let err = ParcelConfig::new(&MemoryFileSystem::default(), &package_manager).load(
+        &project_root,
+        Some(String::from("@scope/config")),
+        None,
+      );
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(format!(
+            "Failed to resolve @scope/config from {}",
+            project_root.join("index").display()
+          ))
+          .to_string()
+        )
+      );
+    }
+
+    #[test]
+    fn errors_on_parcelrc_file() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      package_manager_resolution(
+        &mut package_manager,
+        String::from("@scope/config"),
+        project_root.join("index"),
+      );
+
+      let err = ParcelConfig::new(&MemoryFileSystem::default(), &package_manager).load(
+        &project_root,
+        None,
+        Some(String::from("@scope/config")),
+      );
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(String::from(
+            "Failed to read parcel config at node_modules/@scope/config/index.json: Failed to read file",
+          ))
+          .to_string()
+        )
+      );
+    }
+  }
+
+  mod fallback_with_config {
+    use std::collections::HashMap;
+
+    use crate::{
+      fs::memory_file_system::MemoryFileSystem,
+      package_manager::MockPackageManager,
+      parcel_config::{
+        tests::{package_manager_resolution, project_root, DiagnosticError},
+        ParcelConfig,
+      },
+    };
+
+    #[test]
+    fn returns_specified_config() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      let scope_config = package_manager_resolution(
+        &mut package_manager,
+        String::from("@scope/config"),
+        project_root.join("index"),
+      );
+
+      let config = ParcelConfig::new(
+        &MemoryFileSystem::new(HashMap::from([
+          (project_root.join(".parcelrc"), String::from("{}")),
+          (scope_config, String::from("{}")),
+        ])),
+        &package_manager,
+      )
+      .load(&project_root, Some(String::from("@scope/config")), None);
+
+      // TODO...
+      assert_eq!(
+        config.map_err(|e| e.to_string()),
+        Err(DiagnosticError::new(String::from("Unimplemented",)).to_string())
+      );
+    }
+
+    #[test]
+    fn returns_fallback_config_when_no_matching_config() {
+      let project_root = project_root();
+      let mut package_manager = MockPackageManager::new();
+
+      let scope_config = package_manager_resolution(
+        &mut package_manager,
+        String::from("@scope/config"),
+        project_root.join("index"),
+      );
+
+      let config = ParcelConfig::new(
+        &MemoryFileSystem::new(HashMap::from([
+          (project_root.join(".parcelrc"), String::from("{}")),
+          (scope_config, String::from("{}")),
+        ])),
+        &package_manager,
+      )
+      .load(&project_root, Some(String::from("@scope/config")), None);
+
+      // TODO...
+      assert_eq!(
+        config.map_err(|e| e.to_string()),
+        Err(DiagnosticError::new(String::from("Unimplemented",)).to_string())
+      );
+    }
+  }
 
   mod validates {}
 }
