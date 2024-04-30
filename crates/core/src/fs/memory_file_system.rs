@@ -8,6 +8,7 @@ use crate::diagnostic::diagnostic_error::DiagnosticError;
 
 use super::file_system::FileSystem;
 
+#[derive(Default)]
 pub struct MemoryFileSystem {
   files: HashMap<PathBuf, String>,
 }
@@ -39,7 +40,7 @@ impl FileSystem for MemoryFileSystem {
 
       for name in &filenames {
         let fullpath = dir.join(name);
-        if fullpath.is_file() {
+        if self.files.contains_key(&fullpath) {
           return Some(fullpath);
         }
       }

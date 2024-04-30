@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use parcel_core::{
   fs::memory_file_system::MemoryFileSystem, package_manager::MockPackageManager,
@@ -6,10 +6,9 @@ use parcel_core::{
 };
 
 fn main() {
-  let config = ParcelConfig::new(
-    MemoryFileSystem::new(HashMap::new()),
-    MockPackageManager::new(),
-  );
+  let fs = MemoryFileSystem::default();
+  let package_manager = MockPackageManager::new();
+  let config = ParcelConfig::new(&fs, &package_manager);
 
   let err = config.load(&PathBuf::from("/"), None, None);
 

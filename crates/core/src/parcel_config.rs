@@ -24,13 +24,13 @@ pub struct ParcelRc {
   reporters: Vec<String>,
 }
 
-pub struct ParcelConfig<'a, 'b, T, U> {
+pub struct ParcelConfig<'a, T, U> {
   fs: &'a T,
-  package_manager: &'b U,
+  package_manager: &'a U,
 }
 
-impl<'a, 'b, T: FileSystem, U: PackageManager> ParcelConfig<'a, 'b, T, U> {
-  pub fn new(fs: &'a T, package_manager: &'b U) -> Self {
+impl<'a, T: FileSystem, U: PackageManager> ParcelConfig<'a, T, U> {
+  pub fn new(fs: &'a T, package_manager: &'a U) -> Self {
     ParcelConfig {
       fs,
       package_manager,
@@ -86,7 +86,7 @@ impl<'a, 'b, T: FileSystem, U: PackageManager> ParcelConfig<'a, 'b, T, U> {
     // TODO Check if validation needed or done by serde
     // TODO Named reserved pipelines
 
-    let files = vec![path];
+    let _files = vec![path];
     if config.extends.is_empty() {
       return Err(DiagnosticError::new(String::from("Unimplemented")));
       // return Ok((config, files));
@@ -167,10 +167,10 @@ impl<'a, 'b, T: FileSystem, U: PackageManager> ParcelConfig<'a, 'b, T, U> {
     }
 
     let config_path = config_path.unwrap();
-    let config = self.fs.read_file(&config_path).map_err(|source| {
+    let _config = self.fs.read_file(&config_path).map_err(|source| {
       DiagnosticError::new_source(
         format!(
-          "Unable to locate parcel config at {}",
+          "Unable to read parcel config at {}",
           diff_paths(project_root, config_path.clone())
             .unwrap_or(config_path)
             .as_os_str()
@@ -215,29 +215,55 @@ impl<'a, 'b, T: FileSystem, U: PackageManager> ParcelConfig<'a, 'b, T, U> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{fs::memory_file_system::MemoryFileSystem, package_manager::MockPackageManager};
-  use std::{collections::HashMap, path::PathBuf};
 
-  #[test]
-  fn errors_on_unfound_parcelrc() {
-    let fs = MemoryFileSystem::new(HashMap::new());
-    let package_manager = MockPackageManager::new();
-    let config = ParcelConfig::new(&fs, &package_manager);
+  mod empty_config_and_fallback {
+    use super::*;
+    use crate::{fs::memory_file_system::MemoryFileSystem, package_manager::MockPackageManager};
+    use std::path::PathBuf;
 
-    let err = config.load(&PathBuf::from("/"), None, None);
+    #[test]
+    fn errors_on_unfound_parcelrc() {
+      let fs = MemoryFileSystem::default();
+      let package_manager = MockPackageManager::new();
+      let config: ParcelConfig<MemoryFileSystem, MockPackageManager> =
+        ParcelConfig::new(&fs, &package_manager);
 
-    assert_eq!(
-      err.map_err(|e| e.to_string()),
-      Err(
-        DiagnosticError::new(format!("Unable to locate .parcelrc from {:?}", fs.cwd())).to_string()
-      )
-    );
+      let err = config.load(&PathBuf::from("/"), None, None);
 
-    // assert_eq!(err.unwrap_err().source());
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(format!(
+            "Unable to locate .parcelrc from {}",
+            fs.cwd().as_os_str().to_str().unwrap()
+          ))
+          .to_string()
+        )
+      );
+    }
+
+    #[test]
+    fn reads_default_parcel_config() {
+      let project_root = PathBuf::from("/");
+      let fs = MemoryFileSystem::new(HashMap::from([(
+        project_root.join(".parcelrc"),
+        String::from("{}"),
+      )]));
+      let package_manager = MockPackageManager::new();
+      let config: ParcelConfig<MemoryFileSystem, MockPackageManager> =
+        ParcelConfig::new(&fs, &package_manager);
+
+      let err = config.load(&project_root, None, None);
+
+      // TODO...
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(DiagnosticError::new(String::from("Unimplemented",)).to_string())
+      );
+    }
   }
 
-  fn errors_on_unfound_parcelrc_path() {
-    let result = 2 + 2;
-    assert_eq!(result, 4);
-  }
+  mod config {}
+
+  mod validates {}
 }
