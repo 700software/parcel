@@ -8,7 +8,6 @@ edition = "2021"
 glob-match = "0.2.1"
 indexmap = "*"
 mockall = "0.12.1"
-parcel-resolver = { path = "../../packages/utils/node-resolver-rs" }
 pathdiff = "0.2.1"
 serde = "1.0.123"
 serde_json5 = "0.1.0"

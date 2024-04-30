@@ -1,9 +1,6 @@
-use std::{
-  env, fs,
-  path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use crate::diagnostic_error::DiagnosticError;
+use crate::diagnostic::diagnostic_error::DiagnosticError;
 
 pub trait FileSystem {
   fn cwd(&self) -> PathBuf;

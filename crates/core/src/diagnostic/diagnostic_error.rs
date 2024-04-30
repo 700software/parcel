@@ -1,5 +1,3 @@
-// TODO Move this to another crate at some point
-
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
@@ -26,7 +24,16 @@ impl DiagnosticError {
 
 impl fmt::Display for DiagnosticError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "{}", self.message)
+    if self.source.is_none() {
+      return write!(f, "{}", self.message);
+    }
+
+    return write!(
+      f,
+      "{}: {:?}",
+      self.message,
+      self.source.as_ref().unwrap().to_string()
+    );
   }
 }
 

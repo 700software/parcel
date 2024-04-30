@@ -1604,7 +1604,6 @@ dependencies = [
  "glob-match",
  "indexmap 2.1.0",
  "mockall",
- "parcel-resolver",
  "pathdiff",
  "serde",
  "serde_json5",

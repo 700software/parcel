@@ -1,22 +1,21 @@
 use std::{
-  collections::HashMap,
-  env,
+  env, fs,
   path::{Path, PathBuf},
 };
 
-use crate::{diagnostic_error::DiagnosticError, file_system::Fs};
+use crate::diagnostic::diagnostic_error::DiagnosticError;
 
-pub struct MemoryFileSystem {
-  files: HashMap<PathBuf, String>,
-}
+use super::file_system::FileSystem;
 
-impl MemoryFileSystem {
-  pub fn new(files: HashMap<PathBuf, String>) -> Self {
-    MemoryFileSystem { files }
+pub struct LocalFileSystem {}
+
+impl LocalFileSystem {
+  pub fn new() -> Self {
+    LocalFileSystem {}
   }
 }
 
-impl FileSystem for MemoryFileSystem {
+impl FileSystem for LocalFileSystem {
   fn cwd(&self) -> PathBuf {
     env::current_dir().expect("Failed to load the current working directory")
   }
@@ -51,10 +50,7 @@ impl FileSystem for MemoryFileSystem {
   }
 
   fn read_file(&self, file_path: impl AsRef<Path>) -> Result<String, DiagnosticError> {
-    self
-      .files
-      .get(file_path.as_ref())
-      .map(|s| String::from(s))
-      .ok_or_else(|| DiagnosticError::new(format!("Failed to read file")))
+    fs::read_to_string(file_path)
+      .map_err(|source| DiagnosticError::new_source(format!("Failed to read file"), source))
   }
 }

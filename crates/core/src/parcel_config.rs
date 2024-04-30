@@ -6,8 +6,8 @@ use std::{
 
 use pathdiff::diff_paths;
 
-use crate::config::Config;
-use crate::{diagnostic_error::DiagnosticError, package_manager::PackageManager};
+use crate::{config::Config, fs::file_system::FileSystem};
+use crate::{diagnostic::diagnostic_error::DiagnosticError, package_manager::PackageManager};
 
 #[derive(Debug)]
 pub struct ParcelRc {
@@ -24,13 +24,13 @@ pub struct ParcelRc {
   reporters: Vec<String>,
 }
 
-pub struct ParcelConfig<T, U> {
-  fs: T,
-  package_manager: U,
+pub struct ParcelConfig<'a, 'b, T, U> {
+  fs: &'a T,
+  package_manager: &'b U,
 }
 
-impl<T: Fs, U: PackageManager> ParcelConfig<T, U> {
-  pub fn new(fs: T, package_manager: U) -> Self {
+impl<'a, 'b, T: FileSystem, U: PackageManager> ParcelConfig<'a, 'b, T, U> {
+  pub fn new(fs: &'a T, package_manager: &'b U) -> Self {
     ParcelConfig {
       fs,
       package_manager,
@@ -163,10 +163,7 @@ impl<T: Fs, U: PackageManager> ParcelConfig<T, U> {
     }
 
     if config_path.is_err() {
-      return Err(DiagnosticError::new_source(
-        String::from("Unable to locate .parcelrc"),
-        config_path.unwrap_err(),
-      ));
+      return Err(config_path.unwrap_err());
     }
 
     let config_path = config_path.unwrap();
@@ -217,20 +214,26 @@ impl<T: Fs, U: PackageManager> ParcelConfig<T, U> {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  use crate::{fs::memory_file_system::MemoryFileSystem, package_manager::MockPackageManager};
   use std::{collections::HashMap, path::PathBuf};
-
-  use crate::{
-    memory_fs::MemoryFileSystem, package_manager::MockPackageManager, parcel_config::ParcelConfig,
-  };
 
   #[test]
   fn errors_on_unfound_parcelrc() {
-    let config = ParcelConfig::new(
-      MemoryFileSystem::new(HashMap::new()),
-      MockPackageManager::new(),
+    let fs = MemoryFileSystem::new(HashMap::new());
+    let package_manager = MockPackageManager::new();
+    let config = ParcelConfig::new(&fs, &package_manager);
+
+    let err = config.load(&PathBuf::from("/"), None, None);
+
+    assert_eq!(
+      err.map_err(|e| e.to_string()),
+      Err(
+        DiagnosticError::new(format!("Unable to locate .parcelrc from {:?}", fs.cwd())).to_string()
+      )
     );
 
-    assert_eq!(config.load(&PathBuf::from("/"), None, None), 4);
+    // assert_eq!(err.unwrap_err().source());
   }
 
   fn errors_on_unfound_parcelrc_path() {

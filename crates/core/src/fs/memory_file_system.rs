@@ -1,30 +1,24 @@
 use std::{
-  env, fs,
+  collections::HashMap,
+  env,
   path::{Path, PathBuf},
 };
 
-use crate::diagnostic_error::DiagnosticError;
+use crate::diagnostic::diagnostic_error::DiagnosticError;
 
-pub trait FileSystem {
-  fn cwd(&self) -> PathBuf;
-  fn find_ancestor_file(
-    &self,
-    files: Vec<String>,
-    from: impl AsRef<Path>,
-    root: impl AsRef<Path>,
-  ) -> Option<PathBuf>;
-  fn read_file(&self, path: impl AsRef<Path>) -> Result<String, DiagnosticError>;
+use super::file_system::FileSystem;
+
+pub struct MemoryFileSystem {
+  files: HashMap<PathBuf, String>,
 }
 
-pub struct FileSystem {}
-
-impl FileSystem {
-  pub fn new() -> Self {
-    FileSystem {}
+impl MemoryFileSystem {
+  pub fn new(files: HashMap<PathBuf, String>) -> Self {
+    MemoryFileSystem { files }
   }
 }
 
-impl FileSystem for FileSystem {
+impl FileSystem for MemoryFileSystem {
   fn cwd(&self) -> PathBuf {
     env::current_dir().expect("Failed to load the current working directory")
   }
@@ -59,7 +53,10 @@ impl FileSystem for FileSystem {
   }
 
   fn read_file(&self, file_path: impl AsRef<Path>) -> Result<String, DiagnosticError> {
-    fs::read_to_string(file_path)
-      .map_err(|source| DiagnosticError::new_source(format!("Failed to read file"), source))
+    self
+      .files
+      .get(file_path.as_ref())
+      .map(|s| String::from(s))
+      .ok_or_else(|| DiagnosticError::new(format!("Failed to read file")))
   }
 }

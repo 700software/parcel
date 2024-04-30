@@ -2,13 +2,13 @@ use glob_match::glob_match;
 use indexmap::IndexMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PipelineNode {
   Plugin(PluginNode),
   Spread,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct PipelineMap {
   map: IndexMap<String, Vec<PipelineNode>>,
 }
@@ -62,7 +62,7 @@ impl PipelineMap {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Config {
   resolvers: Vec<PluginNode>,
   transformers: PipelineMap,
@@ -76,7 +76,7 @@ pub struct Config {
   reporters: Vec<PluginNode>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PluginNode {
   pub key_path: Option<String>,
   pub package_name: String,

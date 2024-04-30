@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use mockall::automock;
 
-use crate::diagnostic_error::DiagnosticError;
+use crate::diagnostic::diagnostic_error::DiagnosticError;
 
 pub struct Resolution {
   pub resolved: PathBuf,
