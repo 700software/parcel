@@ -5,7 +5,7 @@ use std::{
 
 use crate::diagnostic_error::DiagnosticError;
 
-pub trait Fs {
+pub trait FileSystem {
   fn cwd(&self) -> PathBuf;
   fn find_ancestor_file(
     &self,
@@ -24,7 +24,7 @@ impl FileSystem {
   }
 }
 
-impl Fs for FileSystem {
+impl FileSystem for FileSystem {
   fn cwd(&self) -> PathBuf {
     env::current_dir().expect("Failed to load the current working directory")
   }

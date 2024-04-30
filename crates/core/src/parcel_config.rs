@@ -6,16 +6,8 @@ use std::{
 
 use pathdiff::diff_paths;
 
-use crate::diagnostic_error::DiagnosticError;
-use crate::{config::Config, fs::Fs};
-
-struct Resolution {
-  resolved: PathBuf,
-}
-
-trait PackageManager {
-  fn resolve(&self, specifier: &String, from: &Path) -> Result<Resolution, DiagnosticError>;
-}
+use crate::config::Config;
+use crate::{diagnostic_error::DiagnosticError, package_manager::PackageManager};
 
 #[derive(Debug)]
 pub struct ParcelRc {
@@ -225,13 +217,20 @@ impl<T: Fs, U: PackageManager> ParcelConfig<T, U> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{fs::FileSystem, parcel_config::ParcelConfig};
+  use std::{collections::HashMap, path::PathBuf};
+
+  use crate::{
+    memory_fs::MemoryFileSystem, package_manager::MockPackageManager, parcel_config::ParcelConfig,
+  };
 
   #[test]
   fn errors_on_unfound_parcelrc() {
-    let config = ParcelConfig::new(FileSystem::new(), 1);
+    let config = ParcelConfig::new(
+      MemoryFileSystem::new(HashMap::new()),
+      MockPackageManager::new(),
+    );
 
-    assert_eq!(config.load(), 4);
+    assert_eq!(config.load(&PathBuf::from("/"), None, None), 4);
   }
 
   fn errors_on_unfound_parcelrc_path() {

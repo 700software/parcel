@@ -1,4 +1,4 @@
 pub mod config;
 pub mod diagnostic_error;
-mod fs;
+pub mod package_manager;
 pub mod parcel_config;
