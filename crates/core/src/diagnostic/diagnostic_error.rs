@@ -22,6 +22,12 @@ impl DiagnosticError {
   }
 }
 
+impl PartialEq for DiagnosticError {
+  fn eq(&self, other: &Self) -> bool {
+    self.to_string() == other.to_string()
+  }
+}
+
 impl fmt::Display for DiagnosticError {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if self.source.is_none() {

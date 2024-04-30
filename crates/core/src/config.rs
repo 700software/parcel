@@ -1,16 +1,18 @@
 use glob_match::glob_match;
 use indexmap::IndexMap;
-use std::path::{Path, PathBuf};
+use std::{
+  borrow::Borrow,
+  collections::HashMap,
+  marker::PhantomData,
+  path::{Path, PathBuf},
+  rc::Rc,
+};
 
-#[derive(Debug, PartialEq)]
-pub enum PipelineNode {
-  Plugin(PluginNode),
-  Spread,
-}
+use crate::parcel_config::ParcelRc;
 
 #[derive(Debug, PartialEq)]
 pub struct PipelineMap {
-  map: IndexMap<String, Vec<PipelineNode>>,
+  map: IndexMap<String, Vec<PluginNode>>,
 }
 
 impl PipelineMap {
@@ -42,19 +44,11 @@ impl PipelineMap {
       return Vec::new();
     }
 
-    fn flatten(matches: &mut Vec<&Vec<PipelineNode>>) -> Vec<PluginNode> {
+    fn flatten(matches: &mut Vec<&Vec<PluginNode>>) -> Vec<PluginNode> {
       matches
         .remove(0)
         .into_iter()
-        .flat_map(|node| {
-          match node {
-            PipelineNode::Plugin(plugin) => vec![plugin.clone()],
-            PipelineNode::Spread => {
-              // TODO: error if more than one spread
-              flatten(matches)
-            }
-          }
-        })
+        .flat_map(|plugin| vec![plugin.clone()])
         .collect()
     }
 
@@ -64,28 +58,120 @@ impl PipelineMap {
 
 #[derive(Debug, PartialEq)]
 pub struct Config {
-  resolvers: Vec<PluginNode>,
-  transformers: PipelineMap,
-  bundler: Option<PluginNode>,
-  namers: Vec<PluginNode>,
-  runtimes: Vec<PluginNode>,
-  packagers: IndexMap<String, PluginNode>,
-  optimizers: PipelineMap,
-  validators: PipelineMap,
+  bundler: PluginNode,
   compressors: PipelineMap,
+  namers: Vec<PluginNode>,
+  optimizers: PipelineMap,
+  packagers: PipelineMap,
   reporters: Vec<PluginNode>,
+  resolvers: Vec<PluginNode>,
+  runtimes: Vec<PluginNode>,
+  transformers: PipelineMap,
+  validators: PipelineMap,
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub struct PartialConfig {
+  bundler: Option<PluginNode>,
+  compressors: HashMap<String, Vec<PluginNode>>,
+  namers: Vec<PluginNode>,
+  optimizers: HashMap<String, Vec<PluginNode>>,
+  packagers: HashMap<String, PluginNode>,
+  reporters: Vec<PluginNode>,
+  resolvers: Vec<PluginNode>,
+  runtimes: Vec<PluginNode>,
+  transformers: HashMap<String, Vec<PluginNode>>,
+  validators: HashMap<String, Vec<PluginNode>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginNode {
-  pub key_path: Option<String>,
   pub package_name: String,
-  pub resolve_from: PathBuf,
+  pub resolve_from: Rc<String>,
 }
 
 pub struct ProjectPath(String);
 
 type Result<T> = std::result::Result<T, String>;
+
+impl From<&ParcelRc> for PartialConfig {
+  fn from(parcel_rc: &ParcelRc) -> Self {
+    let resolve_from = Rc::new(parcel_rc.path.display().to_string());
+
+    // TODO
+    PartialConfig {
+      bundler: parcel_rc
+        .contents
+        .bundler
+        .as_ref()
+        .map(|package_name| PluginNode {
+          package_name: package_name.clone(),
+          resolve_from: Rc::clone(&resolve_from),
+        }),
+      compressors: HashMap::new(),
+      namers: parcel_rc
+        .contents
+        .namers
+        .as_ref()
+        .map(|namers| {
+          namers
+            .into_iter()
+            .map(|package_name| PluginNode {
+              package_name: package_name.clone(),
+              resolve_from: Rc::clone(&resolve_from),
+            })
+            .collect()
+        })
+        .unwrap_or(Vec::new()),
+      optimizers: HashMap::new(),
+      packagers: HashMap::new(),
+      reporters: parcel_rc
+        .contents
+        .reporters
+        .as_ref()
+        .map(|reporters| {
+          reporters
+            .into_iter()
+            .map(|package_name| PluginNode {
+              package_name: package_name.clone(),
+              resolve_from: Rc::clone(&resolve_from),
+            })
+            .collect()
+        })
+        .unwrap_or(Vec::new()),
+      resolvers: parcel_rc
+        .contents
+        .resolvers
+        .as_ref()
+        .map(|resolvers| {
+          resolvers
+            .into_iter()
+            .map(|package_name| PluginNode {
+              package_name: package_name.clone(),
+              resolve_from: Rc::clone(&resolve_from),
+            })
+            .collect()
+        })
+        .unwrap_or(Vec::new()),
+      runtimes: parcel_rc
+        .contents
+        .runtimes
+        .as_ref()
+        .map(|runtimes| {
+          runtimes
+            .into_iter()
+            .map(|package_name| PluginNode {
+              package_name: package_name.clone(),
+              resolve_from: Rc::clone(&resolve_from),
+            })
+            .collect()
+        })
+        .unwrap_or(Vec::new()),
+      transformers: HashMap::new(),
+      validators: HashMap::new(),
+    }
+  }
+}
 
 impl Config {
   pub fn validators(&self, path: &Path) -> Result<Vec<PluginNode>> {
@@ -124,10 +210,11 @@ impl Config {
   }
 
   pub fn bundler<P: AsRef<str>>(&self) -> Result<PluginNode> {
-    match self.bundler.clone() {
-      None => self.missing_plugin_error(String::from("No bundler specified in .parcelrc config")),
-      Some(bundler) => Ok(bundler),
-    }
+    Ok(self.bundler.clone())
+    // match self.bundler.clone() {
+    //   None => self.missing_plugin_error(String::from("No bundler specified in .parcelrc config")),
+    //   Some(bundler) => Ok(bundler),
+    // }
   }
 
   pub fn namers(&self) -> Result<Vec<PluginNode>> {
@@ -153,12 +240,13 @@ impl Config {
     let path = path.as_os_str().to_str().unwrap();
     let packager = self
       .packagers
+      .map
       .iter()
       .find(|(pattern, _)| is_match(pattern, path, basename, ""));
 
     match packager {
       None => self.missing_plugin_error(format!("No packager found for {}", path)),
-      Some((_, pkgr)) => Ok(pkgr.clone()),
+      Some((_, pkgr)) => Ok(pkgr.first().unwrap().clone()),
     }
   }
 
