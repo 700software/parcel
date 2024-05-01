@@ -1,14 +1,8 @@
 use glob_match::glob_match;
 use indexmap::IndexMap;
-use std::{
-  borrow::Borrow,
-  collections::HashMap,
-  marker::PhantomData,
-  path::{Path, PathBuf},
-  rc::Rc,
-};
+use std::{path::Path, rc::Rc};
 
-use crate::parcel_config::ParcelRc;
+use super::parcel_rc::ParcelRcFile;
 
 #[derive(Debug, PartialEq)]
 pub struct PipelineMap {
@@ -57,7 +51,7 @@ impl PipelineMap {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Config {
+pub struct ParcelConfig {
   bundler: PluginNode,
   compressors: PipelineMap,
   namers: Vec<PluginNode>,
@@ -71,17 +65,17 @@ pub struct Config {
 }
 
 #[derive(Debug, Default, PartialEq)]
-pub struct PartialConfig {
-  bundler: Option<PluginNode>,
-  compressors: HashMap<String, Vec<PluginNode>>,
-  namers: Vec<PluginNode>,
-  optimizers: HashMap<String, Vec<PluginNode>>,
-  packagers: HashMap<String, PluginNode>,
-  reporters: Vec<PluginNode>,
-  resolvers: Vec<PluginNode>,
-  runtimes: Vec<PluginNode>,
-  transformers: HashMap<String, Vec<PluginNode>>,
-  validators: HashMap<String, Vec<PluginNode>>,
+pub struct PartialParcelConfig {
+  pub bundler: Option<PluginNode>,
+  pub compressors: IndexMap<String, Vec<PluginNode>>,
+  pub namers: Vec<PluginNode>,
+  pub optimizers: IndexMap<String, Vec<PluginNode>>,
+  pub packagers: IndexMap<String, PluginNode>,
+  pub reporters: Vec<PluginNode>,
+  pub resolvers: Vec<PluginNode>,
+  pub runtimes: Vec<PluginNode>,
+  pub transformers: IndexMap<String, Vec<PluginNode>>,
+  pub validators: IndexMap<String, Vec<PluginNode>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -94,86 +88,88 @@ pub struct ProjectPath(String);
 
 type Result<T> = std::result::Result<T, String>;
 
-impl From<&ParcelRc> for PartialConfig {
-  fn from(parcel_rc: &ParcelRc) -> Self {
+impl From<&ParcelRcFile> for PartialParcelConfig {
+  fn from(parcel_rc: &ParcelRcFile) -> Self {
     let resolve_from = Rc::new(parcel_rc.path.display().to_string());
 
-    // TODO
-    PartialConfig {
+    let to_vec = |maybe_plugins: Option<&Vec<String>>| {
+      maybe_plugins
+        .map(|plugins| {
+          plugins
+            .iter()
+            .map(|package_name| PluginNode {
+              package_name: String::from(package_name),
+              resolve_from: Rc::clone(&resolve_from),
+            })
+            .collect()
+        })
+        .unwrap_or(Vec::new())
+    };
+
+    let to_pipelines = |map: Option<&IndexMap<String, Vec<String>>>| {
+      map
+        .map(|plugins| {
+          plugins
+            .iter()
+            .map(|(pattern, plugins)| {
+              (
+                String::from(pattern),
+                plugins
+                  .iter()
+                  .map(|package_name| PluginNode {
+                    package_name: String::from(package_name),
+                    resolve_from: Rc::clone(&resolve_from),
+                  })
+                  .collect(),
+              )
+            })
+            .collect()
+        })
+        .unwrap_or(IndexMap::new())
+    };
+
+    let to_pipeline = |map: Option<&IndexMap<String, String>>| {
+      map
+        .map(|plugins| {
+          plugins
+            .iter()
+            .map(|(pattern, package_name)| {
+              (
+                String::from(pattern),
+                PluginNode {
+                  package_name: String::from(package_name),
+                  resolve_from: Rc::clone(&resolve_from),
+                },
+              )
+            })
+            .collect()
+        })
+        .unwrap_or(IndexMap::new())
+    };
+
+    PartialParcelConfig {
       bundler: parcel_rc
         .contents
         .bundler
         .as_ref()
         .map(|package_name| PluginNode {
-          package_name: package_name.clone(),
+          package_name: String::from(package_name),
           resolve_from: Rc::clone(&resolve_from),
         }),
-      compressors: HashMap::new(),
-      namers: parcel_rc
-        .contents
-        .namers
-        .as_ref()
-        .map(|namers| {
-          namers
-            .into_iter()
-            .map(|package_name| PluginNode {
-              package_name: package_name.clone(),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-            .collect()
-        })
-        .unwrap_or(Vec::new()),
-      optimizers: HashMap::new(),
-      packagers: HashMap::new(),
-      reporters: parcel_rc
-        .contents
-        .reporters
-        .as_ref()
-        .map(|reporters| {
-          reporters
-            .into_iter()
-            .map(|package_name| PluginNode {
-              package_name: package_name.clone(),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-            .collect()
-        })
-        .unwrap_or(Vec::new()),
-      resolvers: parcel_rc
-        .contents
-        .resolvers
-        .as_ref()
-        .map(|resolvers| {
-          resolvers
-            .into_iter()
-            .map(|package_name| PluginNode {
-              package_name: package_name.clone(),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-            .collect()
-        })
-        .unwrap_or(Vec::new()),
-      runtimes: parcel_rc
-        .contents
-        .runtimes
-        .as_ref()
-        .map(|runtimes| {
-          runtimes
-            .into_iter()
-            .map(|package_name| PluginNode {
-              package_name: package_name.clone(),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-            .collect()
-        })
-        .unwrap_or(Vec::new()),
-      transformers: HashMap::new(),
-      validators: HashMap::new(),
+      compressors: to_pipelines(parcel_rc.contents.compressors.as_ref()),
+      namers: to_vec(parcel_rc.contents.namers.as_ref()),
+      optimizers: to_pipelines(parcel_rc.contents.optimizers.as_ref()),
+      packagers: to_pipeline(parcel_rc.contents.packagers.as_ref()),
+      reporters: to_vec(parcel_rc.contents.reporters.as_ref()),
+      resolvers: to_vec(parcel_rc.contents.resolvers.as_ref()),
+      runtimes: to_vec(parcel_rc.contents.runtimes.as_ref()),
+      transformers: to_pipelines(parcel_rc.contents.transformers.as_ref()),
+      validators: to_pipelines(parcel_rc.contents.validators.as_ref()),
     }
   }
 }
 
-impl Config {
+impl ParcelConfig {
   pub fn validators(&self, path: &Path) -> Result<Vec<PluginNode>> {
     let pipeline: &Option<&str> = &None;
     let validators = self.validators.get(path, pipeline);
