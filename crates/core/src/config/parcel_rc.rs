@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 use serde::Deserialize;
 
+/// Deserialized .parcel_rc config
 #[derive(Debug, Deserialize)]
 pub struct ParcelRc {
   pub extends: Option<Vec<String>>,
@@ -18,6 +19,7 @@ pub struct ParcelRc {
   pub validators: Option<IndexMap<String, Vec<String>>>,
 }
 
+/// Represents the .parcel_rc config file
 #[derive(Debug)]
 pub struct ParcelRcFile {
   pub path: PathBuf,

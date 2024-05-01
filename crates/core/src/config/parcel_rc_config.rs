@@ -8,7 +8,7 @@ use pathdiff::diff_paths;
 use crate::fs::file_system::FileSystem;
 use crate::{diagnostic::diagnostic_error::DiagnosticError, package_manager::PackageManager};
 
-use super::{parcel_config::PartialParcelConfig, parcel_rc::ParcelRcFile};
+use super::{parcel_rc::ParcelRcFile, partial_parcel_config::PartialParcelConfig};
 
 pub struct ParcelRcConfig<'a, T, U> {
   fs: &'a T,
@@ -28,7 +28,7 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
     project_root: &Path,
     path: &PathBuf,
   ) -> Result<PathBuf, DiagnosticError> {
-    // TODO Add caching
+    // TODO Add caching?
 
     let from = path.parent().unwrap_or(path);
 
@@ -71,42 +71,35 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
     // TODO Validation: e.g. empty, name format, etc
     // TODO Named reserved pipelines
 
-    let files = vec![parcel_rc.path.clone()];
+    let mut files = vec![parcel_rc.path.clone()];
     let extends = parcel_rc.contents.extends.as_ref();
+    let mut config = PartialParcelConfig::from(parcel_rc);
     if extends.is_none() || extends.is_some_and(|e| e.is_empty()) {
-      return Ok((PartialParcelConfig::from(parcel_rc), files));
+      return Ok((config, files));
     }
 
-    // let errors;
-    // TODO Ensure array extends in serde?
-    // config.extends.iter().flat_map(|config| {
-    //   let extended_file = self.resolve_extends(path, ext);
-    //   files.push(extended_file);
-    // });
-    // for (let ext of exts) {
-    //   try {
-    //     let resolved = await resolveExtends(ext, filePath, key, options);
-    //     extendedFiles.push(resolved);
-    //     let {extendedFiles: moreExtendedFiles, config: nextConfig} =
-    //       await processExtendedConfig(filePath, key, ext, resolved, options);
-    //     extendedFiles = extendedFiles.concat(moreExtendedFiles);
-    //     extStartConfig = extStartConfig
-    //       ? mergeConfigs(extStartConfig, nextConfig)
-    //       : nextConfig;
-    //   } catch (err) {
-    //     errors.push(err);
-    //   }
+    // TODO Ensure extends can be an array / single value
+    let extends = extends.unwrap();
+    // let merged_config: Option<PartialParcelConfig> = None;
+    // for extend in extends {
+    //   let extended_file_path = self.resolve_extends(&parcel_rc.path, extend)?;
+
+    //   files.push(extended_file_path.clone());
+
+    //   let (extended_config, mut extended_file_paths) =
+    //     self.process_config(&self.load_parcel_rc(extended_file_path)?)?;
+
+    //   merged_config = match merged_config {
+    //     None => Some(extended_config),
+    //     Some(c) => Some(PartialParcelConfig::merge(c, extended_config)),
+    //   };
+
+    //   files.append(&mut extended_file_paths);
     // }
 
-    // if errors {
-    // return Err(DiagnosticError::new(String::from("Lots of errors")));
-    // throw new ThrowableDiagnostic({
-    //   diagnostic: errors.flatMap(e => e.diagnostics),
-    // });
-    // }
+    // config.merge(merged_config.unwrap());
 
-    return Err(DiagnosticError::new(String::from("Unimplemented")));
-    // Ok((config, files))
+    Ok((config, files))
   }
 
   fn resolve_from(&self, project_root: &PathBuf) -> PathBuf {
@@ -121,6 +114,13 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
     };
 
     dir.join("index")
+  }
+
+  fn load_parcel_rc(&self, path: PathBuf) -> Result<ParcelRcFile, DiagnosticError> {
+    let contents = serde_json5::from_str(&self.fs.read_file(&path)?)
+      .map_err(|source| DiagnosticError::new(source.to_string()))?;
+
+    Ok(ParcelRcFile { path, contents })
   }
 
   pub fn load(
@@ -152,13 +152,7 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
     }
 
     let config_path = config_path.unwrap();
-    let config = self.fs.read_file(&config_path)?;
-
-    let mut parcel_config = self.process_config(&ParcelRcFile {
-      path: config_path,
-      contents: serde_json5::from_str(&config)
-        .map_err(|source| DiagnosticError::new(source.to_string()))?,
-    })?;
+    let parcel_config = self.process_config(&self.load_parcel_rc(config_path)?)?;
 
     //   TODO
     //   if (options.additionalReporters.length > 0) {
@@ -170,9 +164,6 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
     //       ...(config.reporters ?? []),
     //     ];
     //   }
-
-    // return Err(DiagnosticError::new(String::from("Unimplemented")));
-    // return {config, extendedFiles, usedDefault};
 
     Ok(parcel_config)
   }
