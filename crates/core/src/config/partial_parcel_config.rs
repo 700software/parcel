@@ -153,12 +153,19 @@ impl PartialParcelConfig {
 
     match spread_index {
       None => from_pipelines,
-      Some(index) => [
-        &from_pipelines[..index],
-        extend_pipelines.as_slice(),
-        &from_pipelines[(index + 1)..],
-      ]
-      .concat(),
+      Some(index) => {
+        let extend_pipelines = extend_pipelines.as_slice();
+        if extend_pipelines.is_empty() {
+          return from_pipelines;
+        }
+
+        [
+          &from_pipelines[..index],
+          extend_pipelines,
+          &from_pipelines[(index + 1)..],
+        ]
+        .concat()
+      }
     }
   }
 
@@ -476,6 +483,174 @@ mod tests {
                 resolve_from: Rc::new(String::from("/")),
               })
             })
+            .build()
+            .unwrap()
+        );
+      }
+    }
+
+    // TODO paramterize
+    mod namers {
+      use super::*;
+
+      #[test]
+      fn uses_from_when_extend_missing() {
+        let from = PartialParcelConfigBuilder::default()
+          .namers(vec![PluginNode {
+            package_name: String::from("a"),
+            resolve_from: Rc::new(String::from("/")),
+          }])
+          .build()
+          .unwrap();
+
+        let extend = PartialParcelConfig::default();
+        let expected = from.clone();
+
+        assert_eq!(PartialParcelConfig::merge(from, extend), expected);
+      }
+
+      #[test]
+      fn uses_default_when_from_missing() {
+        let from = PartialParcelConfig::default();
+        let extend = PartialParcelConfigBuilder::default()
+          .namers(vec![PluginNode {
+            package_name: String::from("a"),
+            resolve_from: Rc::new(String::from("/")),
+          }])
+          .build()
+          .unwrap();
+
+        assert_eq!(
+          PartialParcelConfig::merge(from, extend),
+          PartialParcelConfig::default()
+        );
+      }
+
+      #[test]
+      fn merges_pipelines_with_missing_dot_dot_dot() {
+        let from = PartialParcelConfigBuilder::default()
+          .namers(vec![
+            PluginNode {
+              package_name: String::from("a"),
+              resolve_from: Rc::new(String::from("/")),
+            },
+            PluginNode {
+              package_name: String::from("b"),
+              resolve_from: Rc::new(String::from("/")),
+            },
+          ])
+          .build()
+          .unwrap();
+
+        let extend = PartialParcelConfigBuilder::default()
+          .namers(vec![PluginNode {
+            package_name: String::from("c"),
+            resolve_from: Rc::new(String::from("/")),
+          }])
+          .build()
+          .unwrap();
+
+        let expected = from.clone();
+
+        assert_eq!(PartialParcelConfig::merge(from, extend), expected);
+      }
+
+      #[test]
+      fn merges_pipelines_with_dot_dot_dot() {
+        let from = PartialParcelConfigBuilder::default()
+          .namers(vec![
+            PluginNode {
+              package_name: String::from("a"),
+              resolve_from: Rc::new(String::from("/")),
+            },
+            PluginNode {
+              package_name: String::from("..."),
+              resolve_from: Rc::new(String::from("/")),
+            },
+            PluginNode {
+              package_name: String::from("c"),
+              resolve_from: Rc::new(String::from("/")),
+            },
+          ])
+          .build()
+          .unwrap();
+
+        let extend = PartialParcelConfigBuilder::default()
+          .namers(vec![PluginNode {
+            package_name: String::from("b"),
+            resolve_from: Rc::new(String::from("~")),
+          }])
+          .build()
+          .unwrap();
+
+        assert_eq!(
+          PartialParcelConfig::merge(from, extend),
+          PartialParcelConfigBuilder::default()
+            .namers(vec!(
+              PluginNode {
+                package_name: String::from("a"),
+                resolve_from: Rc::new(String::from("/")),
+              },
+              PluginNode {
+                package_name: String::from("b"),
+                resolve_from: Rc::new(String::from("~")),
+              },
+              PluginNode {
+                package_name: String::from("c"),
+                resolve_from: Rc::new(String::from("/")),
+              }
+            ))
+            .build()
+            .unwrap()
+        );
+      }
+
+      #[test]
+      fn merges_pipelines_with_dot_dot_dot_match_in_grandparent() {
+        let from = PartialParcelConfigBuilder::default()
+          .namers(vec![
+            PluginNode {
+              package_name: String::from("a"),
+              resolve_from: Rc::new(String::from("/")),
+            },
+            PluginNode {
+              package_name: String::from("..."),
+              resolve_from: Rc::new(String::from("/")),
+            },
+            PluginNode {
+              package_name: String::from("c"),
+              resolve_from: Rc::new(String::from("/")),
+            },
+          ])
+          .build()
+          .unwrap();
+
+        let extend_1 = PartialParcelConfig::default();
+        let extend_2 = PartialParcelConfigBuilder::default()
+          .namers(vec![PluginNode {
+            package_name: String::from("b"),
+            resolve_from: Rc::new(String::from("~")),
+          }])
+          .build()
+          .unwrap();
+
+        assert_eq!(
+          PartialParcelConfig::merge(PartialParcelConfig::merge(from, extend_1), extend_2),
+          PartialParcelConfigBuilder::default()
+            .namers(vec!(
+              PluginNode {
+                package_name: String::from("a"),
+                resolve_from: Rc::new(String::from("/")),
+              },
+              PluginNode {
+                package_name: String::from("b"),
+                resolve_from: Rc::new(String::from("~")),
+              },
+              PluginNode {
+                package_name: String::from("c"),
+                resolve_from: Rc::new(String::from("/")),
+              }
+            ))
             .build()
             .unwrap()
         );
