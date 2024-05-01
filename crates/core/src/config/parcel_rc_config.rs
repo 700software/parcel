@@ -73,31 +73,31 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
 
     let mut files = vec![parcel_rc.path.clone()];
     let extends = parcel_rc.contents.extends.as_ref();
-    let mut config = PartialParcelConfig::from(parcel_rc);
     if extends.is_none() || extends.is_some_and(|e| e.is_empty()) {
-      return Ok((config, files));
+      return Ok((PartialParcelConfig::from(parcel_rc), files));
     }
 
     // TODO Ensure extends can be an array / single value
     let extends = extends.unwrap();
-    // let merged_config: Option<PartialParcelConfig> = None;
-    // for extend in extends {
-    //   let extended_file_path = self.resolve_extends(&parcel_rc.path, extend)?;
+    let mut merged_config: Option<PartialParcelConfig> = None;
+    for extend in extends {
+      let extended_file_path = self.resolve_extends(&parcel_rc.path, extend)?;
 
-    //   files.push(extended_file_path.clone());
+      files.push(extended_file_path.clone());
 
-    //   let (extended_config, mut extended_file_paths) =
-    //     self.process_config(&self.load_parcel_rc(extended_file_path)?)?;
+      let (mut extended_config, mut extended_file_paths) =
+        self.process_config(&self.load_parcel_rc(extended_file_path)?)?;
 
-    //   merged_config = match merged_config {
-    //     None => Some(extended_config),
-    //     Some(c) => Some(PartialParcelConfig::merge(c, extended_config)),
-    //   };
+      merged_config = match merged_config {
+        None => Some(extended_config),
+        Some(config) => Some(PartialParcelConfig::merge(config, extended_config)),
+      };
 
-    //   files.append(&mut extended_file_paths);
-    // }
+      files.append(&mut extended_file_paths);
+    }
 
-    // config.merge(merged_config.unwrap());
+    let config =
+      PartialParcelConfig::merge(PartialParcelConfig::from(parcel_rc), merged_config.unwrap());
 
     Ok((config, files))
   }
