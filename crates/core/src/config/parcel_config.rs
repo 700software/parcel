@@ -2,12 +2,20 @@ use glob_match::glob_match;
 use indexmap::IndexMap;
 use std::{path::Path, rc::Rc};
 
+use crate::diagnostic::diagnostic_error::DiagnosticError;
+
+use super::partial_parcel_config::PartialParcelConfig;
+
 #[derive(Debug, PartialEq)]
 pub struct PipelineMap {
   map: IndexMap<String, Vec<PluginNode>>,
 }
 
 impl PipelineMap {
+  pub fn new(map: IndexMap<String, Vec<PluginNode>>) -> Self {
+    Self { map }
+  }
+
   pub fn get(&self, path: &Path, pipeline: &Option<impl AsRef<str>>) -> Vec<PluginNode> {
     let basename = path.file_name().unwrap().to_str().unwrap();
     let path = path.as_os_str().to_str().unwrap();
@@ -54,7 +62,7 @@ pub struct ParcelConfig {
   compressors: PipelineMap,
   namers: Vec<PluginNode>,
   optimizers: PipelineMap,
-  packagers: PipelineMap,
+  packagers: IndexMap<String, PluginNode>,
   reporters: Vec<PluginNode>,
   resolvers: Vec<PluginNode>,
   runtimes: Vec<PluginNode>,
@@ -70,10 +78,31 @@ pub struct PluginNode {
 
 pub struct ProjectPath(String);
 
-type Result<T> = std::result::Result<T, String>;
+impl TryFrom<PartialParcelConfig> for ParcelConfig {
+  type Error = DiagnosticError;
 
+  fn try_from(config: PartialParcelConfig) -> Result<Self, Self::Error> {
+    match config.bundler {
+      None => Err(DiagnosticError::new(String::from("Missing bundler"))),
+      Some(bundler) => Ok(ParcelConfig {
+        bundler,
+        compressors: PipelineMap::new(config.compressors),
+        namers: config.namers,
+        optimizers: PipelineMap::new(config.optimizers),
+        packagers: config.packagers,
+        reporters: config.reporters,
+        resolvers: config.resolvers,
+        runtimes: config.runtimes,
+        transformers: PipelineMap::new(config.transformers),
+        validators: PipelineMap::new(config.validators),
+      }),
+    }
+  }
+}
+
+// TODO Remove validations later for anything that does not take in input, should be done at an earlier stage
 impl ParcelConfig {
-  pub fn validators(&self, path: &Path) -> Result<Vec<PluginNode>> {
+  pub fn validators(&self, path: &Path) -> Result<Vec<PluginNode>, DiagnosticError> {
     let pipeline: &Option<&str> = &None;
     let validators = self.validators.get(path, pipeline);
 
@@ -85,7 +114,7 @@ impl ParcelConfig {
     path: &Path,
     pipeline: &Option<impl AsRef<str>>,
     allow_empty: bool,
-  ) -> Result<Vec<PluginNode>> {
+  ) -> Result<Vec<PluginNode>, DiagnosticError> {
     let transformers = self.transformers.get(path, pipeline);
 
     if transformers.is_empty() {
@@ -108,15 +137,11 @@ impl ParcelConfig {
     Ok(transformers)
   }
 
-  pub fn bundler<P: AsRef<str>>(&self) -> Result<PluginNode> {
+  pub fn bundler<P: AsRef<str>>(&self) -> Result<PluginNode, DiagnosticError> {
     Ok(self.bundler.clone())
-    // match self.bundler.clone() {
-    //   None => self.missing_plugin_error(String::from("No bundler specified in .parcelrc config")),
-    //   Some(bundler) => Ok(bundler),
-    // }
   }
 
-  pub fn namers(&self) -> Result<Vec<PluginNode>> {
+  pub fn namers(&self) -> Result<Vec<PluginNode>, DiagnosticError> {
     if self.namers.is_empty() {
       return self.missing_plugin_error(String::from(
         "No namer plugins specified in .parcelrc config",
@@ -126,7 +151,7 @@ impl ParcelConfig {
     Ok(self.namers.clone())
   }
 
-  pub fn runtimes(&self) -> Result<Vec<PluginNode>> {
+  pub fn runtimes(&self) -> Result<Vec<PluginNode>, DiagnosticError> {
     if self.runtimes.is_empty() {
       return Ok(Vec::new());
     }
@@ -134,18 +159,17 @@ impl ParcelConfig {
     Ok(self.runtimes.clone())
   }
 
-  pub fn packager(&self, path: &Path) -> Result<PluginNode> {
+  pub fn packager(&self, path: &Path) -> Result<PluginNode, DiagnosticError> {
     let basename = path.file_name().unwrap().to_str().unwrap();
     let path = path.as_os_str().to_str().unwrap();
     let packager = self
       .packagers
-      .map
       .iter()
       .find(|(pattern, _)| is_match(pattern, path, basename, ""));
 
     match packager {
       None => self.missing_plugin_error(format!("No packager found for {}", path)),
-      Some((_, pkgr)) => Ok(pkgr.first().unwrap().clone()),
+      Some((_, pkgr)) => Ok(pkgr.clone()),
     }
   }
 
@@ -153,7 +177,7 @@ impl ParcelConfig {
     &self,
     path: &Path,
     pipeline: &Option<impl AsRef<str>>,
-  ) -> Result<Vec<PluginNode>> {
+  ) -> Result<Vec<PluginNode>, DiagnosticError> {
     let mut use_empty_pipeline = false;
     // If a pipeline is specified, but it doesn't exist in the optimizers config, ignore it.
     // Pipelines for bundles come from their entry assets, so the pipeline likely exists in transformers.
@@ -179,7 +203,7 @@ impl ParcelConfig {
     Ok(optimizers)
   }
 
-  pub fn compressors(&self, path: &Path) -> Result<Vec<PluginNode>> {
+  pub fn compressors(&self, path: &Path) -> Result<Vec<PluginNode>, DiagnosticError> {
     let pipeline: &Option<&str> = &None;
     let compressors = self.compressors.get(path, pipeline);
     if compressors.is_empty() {
@@ -190,7 +214,7 @@ impl ParcelConfig {
     Ok(compressors)
   }
 
-  pub fn resolvers(&self) -> Result<Vec<PluginNode>> {
+  pub fn resolvers(&self) -> Result<Vec<PluginNode>, DiagnosticError> {
     if self.resolvers.is_empty() {
       return self.missing_plugin_error(String::from("No resolvers specified in .parcelrc config"));
     }
@@ -198,12 +222,12 @@ impl ParcelConfig {
     Ok(self.resolvers.clone())
   }
 
-  pub fn reporters(&self) -> Result<Vec<PluginNode>> {
+  pub fn reporters(&self) -> Result<Vec<PluginNode>, DiagnosticError> {
     Ok(self.reporters.clone())
   }
 
-  fn missing_plugin_error<T>(&self, msg: String) -> Result<T> {
-    Err(msg)
+  fn missing_plugin_error<T>(&self, msg: String) -> Result<T, DiagnosticError> {
+    Err(DiagnosticError::new(msg))
   }
 }
 
@@ -219,3 +243,5 @@ fn is_match(pattern: &str, path: &str, basename: &str, pipeline: &str) -> bool {
 
   return glob_match(glob, basename) || glob_match(glob, path);
 }
+
+// TODO Testing
