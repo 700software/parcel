@@ -49,18 +49,25 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
     let path = if extend.starts_with(".") {
       config_path.parent().unwrap_or(config_path).join(extend)
     } else {
-      self.package_manager.resolve(extend, config_path)?.resolved
+      self
+        .package_manager
+        .resolve(extend, config_path)
+        .map_err(|_source| {
+          DiagnosticError::new(format!(
+            "Failed to resolve extended config {} from {}",
+            extend,
+            config_path.display()
+          ))
+        })?
+        .resolved
     };
 
-    canonicalize(path).map_err(|source| {
-      DiagnosticError::new_source(
-        format!(
-          "Unable to resolve extended config {} from {}",
-          extend,
-          config_path.as_os_str().to_str().unwrap()
-        ),
-        source,
-      )
+    canonicalize(path).map_err(|_source| {
+      DiagnosticError::new(format!(
+        "Failed to resolve extended config {} from {}",
+        extend,
+        config_path.display()
+      ))
     })
   }
 
@@ -85,7 +92,7 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
 
       files.push(extended_file_path.clone());
 
-      let (mut extended_config, mut extended_file_paths) =
+      let (extended_config, mut extended_file_paths) =
         self.process_config(&self.load_parcel_rc(extended_file_path)?)?;
 
       merged_config = match merged_config {
@@ -171,6 +178,7 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
   use std::{env, rc::Rc};
 
   use indexmap::{indexmap, IndexMap};
@@ -178,10 +186,9 @@ mod tests {
 
   use crate::{
     config::parcel_config::PluginNode,
+    fs::memory_file_system::MemoryFileSystem,
     package_manager::{MockPackageManager, Resolution},
   };
-
-  use super::*;
 
   fn project_root() -> PathBuf {
     env::current_dir().unwrap()
@@ -199,6 +206,41 @@ mod tests {
       });
   }
 
+  struct InMemoryPackageManager<'a> {
+    fs: &'a MemoryFileSystem,
+  }
+
+  impl<'a> InMemoryPackageManager<'a> {
+    pub fn new(fs: &'a MemoryFileSystem) -> Self {
+      Self { fs }
+    }
+  }
+
+  impl<'a> PackageManager for InMemoryPackageManager<'a> {
+    fn resolve(&self, specifier: &String, from: &Path) -> Result<Resolution, DiagnosticError> {
+      let path = match "true" {
+        _s if specifier.starts_with(".") => from.join(specifier),
+        _s if specifier.starts_with("@") => self
+          .fs
+          .cwd()
+          .join("node_modules")
+          .join(specifier)
+          .join("index.json"),
+        _ => PathBuf::from("Not found"),
+      };
+
+      if !self.fs.is_file(&path) {
+        return Err(DiagnosticError::new(format!(
+          "Failed to resolve {} from {}",
+          specifier,
+          from.display()
+        )));
+      }
+
+      Ok(Resolution { resolved: path })
+    }
+  }
+
   fn package_manager_resolution(
     package_manager: &mut MockPackageManager,
     specifier: String,
@@ -212,7 +254,7 @@ mod tests {
     package_manager
       .expect_resolve()
       .with(eq(specifier), eq(from))
-      .returning(move |specifier, _from| {
+      .returning(|specifier, _from| {
         Ok(Resolution {
           resolved: project_root()
             .join("node_modules")
@@ -233,8 +275,15 @@ mod tests {
     )
   }
 
-  fn parcel_rc_fixture(resolve_from: Rc<String>) -> (String, PartialParcelConfig) {
+  fn parcel_rc_fixtures(resolve_from: Rc<String>) -> (String, String, PartialParcelConfig) {
     (
+      String::from(
+        r#"
+          {
+            "extends": ["@parcel/config-default"]
+          }
+        "#,
+      ),
       String::from(
         r#"
           {
@@ -310,12 +359,15 @@ mod tests {
     )
   }
 
+  fn parcel_rc_fixture(resolve_from: Rc<String>) -> (String, PartialParcelConfig) {
+    let (_extend, parcel_rc, expected_config) = parcel_rc_fixtures(resolve_from);
+
+    (parcel_rc, expected_config)
+  }
+
   mod empty_config_and_fallback {
-    use std::collections::HashMap;
-
-    use crate::fs::memory_file_system::MemoryFileSystem;
-
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn errors_on_missing_parcelrc_file() {
@@ -333,6 +385,29 @@ mod tests {
           DiagnosticError::new(format!(
             "Unable to locate .parcelrc from {}",
             project_root.display()
+          ))
+          .to_string()
+        )
+      );
+    }
+
+    #[test]
+    fn errors_on_failed_extended_parcelrc_resolution() {
+      let project_root = project_root();
+      let (parcel_rc, _extended_parcel_rc, _expected_parcel_config) =
+        parcel_rc_fixtures(Rc::new(String::from("/")));
+
+      let fs = MemoryFileSystem::new(HashMap::from([(project_root.join(".parcelrc"), parcel_rc)]));
+
+      let err =
+        ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(&project_root, None, None);
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(format!(
+            "Failed to resolve extended config @parcel/config-default from {}",
+            project_root.join(".parcelrc").display()
           ))
           .to_string()
         )
@@ -363,22 +438,11 @@ mod tests {
   }
 
   mod config {
+    use super::*;
     use std::{collections::HashMap, rc::Rc};
 
-    use crate::{
-      config::parcel_rc_config::{
-        tests::{
-          fail_package_manager_resolution, package_manager_resolution, parcel_rc_fixture,
-          project_root, to_partial_eq_parcel_config, DiagnosticError,
-        },
-        ParcelRcConfig,
-      },
-      fs::memory_file_system::MemoryFileSystem,
-      package_manager::MockPackageManager,
-    };
-
     #[test]
-    fn errors_on_unresolved_config_specifier() {
+    fn errors_on_failed_config_resolution() {
       let project_root = project_root();
       let mut package_manager = MockPackageManager::new();
 
@@ -396,6 +460,38 @@ mod tests {
           "Failed to resolve @scope/config from {}",
           project_root.join("index").display()
         )))
+      );
+    }
+
+    #[test]
+    fn errors_on_failed_extended_config_resolution() {
+      let project_root = project_root();
+      let config_path = project_root
+        .join("node_modules")
+        .join("@scope")
+        .join("config")
+        .join("index.json");
+
+      let (config, _extended_config, _expected_parcel_config) =
+        parcel_rc_fixtures(Rc::new(String::from("/")));
+
+      let fs = MemoryFileSystem::new(HashMap::from([(config_path.clone(), config)]));
+
+      let err = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        Some(String::from("@scope/config")),
+        None,
+      );
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(format!(
+            "Failed to resolve extended config @parcel/config-default from {}",
+            config_path.display()
+          ))
+          .to_string()
+        )
       );
     }
 
@@ -460,22 +556,11 @@ mod tests {
   }
 
   mod fallback_config {
+    use super::*;
     use std::{collections::HashMap, rc::Rc};
 
-    use crate::{
-      config::parcel_rc_config::{
-        tests::{
-          fail_package_manager_resolution, package_manager_resolution, parcel_rc_fixture,
-          project_root, to_partial_eq_parcel_config, DiagnosticError,
-        },
-        ParcelRcConfig,
-      },
-      fs::memory_file_system::MemoryFileSystem,
-      package_manager::MockPackageManager,
-    };
-
     #[test]
-    fn errors_on_unresolved_fallback_specifier() {
+    fn errors_on_failed_fallback_resolution() {
       let project_root = project_root();
       let mut package_manager = MockPackageManager::new();
 
@@ -483,8 +568,8 @@ mod tests {
 
       let err = ParcelRcConfig::new(&MemoryFileSystem::default(), &package_manager).load(
         &project_root,
-        Some(String::from("@scope/config")),
         None,
+        Some(String::from("@scope/config")),
       );
 
       assert_eq!(
@@ -493,6 +578,40 @@ mod tests {
           "Failed to resolve @scope/config from {}",
           project_root.join("index").display()
         )))
+      );
+    }
+
+    #[test]
+    fn errors_on_failed_extended_fallback_config_resolution() {
+      let project_root = project_root();
+      let fallback_config_path = project_root
+        .join("node_modules")
+        .join("@scope/config")
+        .join("index.json");
+
+      let (fallback_config, _extended_config, _expected_parcel_config) =
+        parcel_rc_fixtures(Rc::new(String::from("/")));
+
+      let fs = MemoryFileSystem::new(HashMap::from([(
+        fallback_config_path.clone(),
+        fallback_config,
+      )]));
+
+      let err = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        Some(String::from("@scope/config")),
+        None,
+      );
+
+      assert_eq!(
+        err.map_err(|e| e.to_string()),
+        Err(
+          DiagnosticError::new(format!(
+            "Failed to resolve extended config @parcel/config-default from {}",
+            fallback_config_path.display()
+          ))
+          .to_string()
+        )
       );
     }
 
@@ -584,18 +703,8 @@ mod tests {
   }
 
   mod fallback_with_config {
+    use super::*;
     use std::{collections::HashMap, rc::Rc};
-
-    use crate::{
-      config::parcel_rc_config::{
-        tests::{
-          package_manager_resolution, parcel_rc_fixture, project_root, to_partial_eq_parcel_config,
-        },
-        ParcelRcConfig,
-      },
-      fs::memory_file_system::MemoryFileSystem,
-      package_manager::MockPackageManager,
-    };
 
     #[test]
     fn returns_specified_config() {

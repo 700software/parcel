@@ -10,5 +10,6 @@ pub trait FileSystem {
     from: impl AsRef<Path>,
     root: impl AsRef<Path>,
   ) -> Option<PathBuf>;
+  fn is_file(&self, path: &impl AsRef<Path>) -> bool;
   fn read_file(&self, path: &impl AsRef<Path>) -> Result<String, DiagnosticError>;
 }

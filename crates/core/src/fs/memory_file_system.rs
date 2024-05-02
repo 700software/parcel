@@ -53,6 +53,10 @@ impl FileSystem for MemoryFileSystem {
     None
   }
 
+  fn is_file(&self, path: &impl AsRef<Path>) -> bool {
+    self.files.contains_key(path.as_ref())
+  }
+
   fn read_file(&self, file_path: &impl AsRef<Path>) -> Result<String, DiagnosticError> {
     let file_path = file_path.as_ref();
     self
