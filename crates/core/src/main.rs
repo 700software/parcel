@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, env};
 
 use parcel_core::{
   config::parcel_rc_config::ParcelRcConfig, fs::memory_file_system::MemoryFileSystem,
@@ -6,11 +6,49 @@ use parcel_core::{
 };
 
 fn main() {
-  let fs = MemoryFileSystem::default();
-  let package_manager = MockPackageManager::new();
-  let config = ParcelRcConfig::new(&fs, &package_manager);
+  let project_root = env::current_dir().unwrap();
+  let parcel_rc = String::from(
+    r#"
+      {
+        "bundler": "@parcel/bundler-default",
+        "compressors": {
+          "*": ["@parcel/compressor-raw"]
+        },
+        "namers": ["@parcel/namer-default"],
+        "optimizers": {
+          "*.{js,mjs,cjs}": ["@parcel/optimizer-swc"]
+        },
+        "packagers": {
+          "*.{js,mjs,cjs}": "@parcel/packager-js"
+        },
+        "reporters": ["@parcel/reporter-dev-server"],
+        "resolvers": ["@parcel/resolver-default"],
+        "runtimes": ["@parcel/runtime-js"],
+        "transformers": {
+          "*.{js,mjs,jsm,jsx,es6,cjs,ts,tsx}": [
+            "@parcel/transformer-js"
+          ],
+        }
+      }
+    "#,
+  );
 
-  let err = config.load(&PathBuf::from("/"), None, None);
+  let (parcel_config, _files) = ParcelRcConfig::new(
+    &MemoryFileSystem::new(HashMap::from([(project_root.join(".parcelrc"), parcel_rc)])),
+    &MockPackageManager::default(),
+  )
+  .load(&project_root, None, None)
+  .unwrap();
 
-  println!("{}", err.unwrap_err());
+  let a = parcel_config.bundler.unwrap().resolve_from.to_string();
+
+  let b = parcel_config
+    .reporters
+    .first()
+    .unwrap()
+    .resolve_from
+    .as_str()
+    .to_string();
+
+  println!("{:?}, {}", a, b);
 }
