@@ -3,10 +3,17 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 use serde::Deserialize;
 
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum Extends {
+  One(String),
+  Many(Vec<String>),
+}
+
 /// Deserialized .parcel_rc config
 #[derive(Debug, Deserialize)]
 pub struct ParcelRc {
-  pub extends: Option<Vec<String>>,
+  pub extends: Option<Extends>,
   pub bundler: Option<String>,
   pub compressors: Option<IndexMap<String, Vec<String>>>,
   pub namers: Option<Vec<String>>,

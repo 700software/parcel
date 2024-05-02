@@ -8,7 +8,10 @@ use pathdiff::diff_paths;
 use crate::fs::file_system::FileSystem;
 use crate::{diagnostic::diagnostic_error::DiagnosticError, package_manager::PackageManager};
 
-use super::{parcel_rc::ParcelRcFile, partial_parcel_config::PartialParcelConfig};
+use super::{
+  parcel_rc::{Extends, ParcelRcFile},
+  partial_parcel_config::PartialParcelConfig,
+};
 
 pub struct ParcelRcConfig<'a, T, U> {
   fs: &'a T,
@@ -80,15 +83,23 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
 
     let mut files = vec![parcel_rc.path.clone()];
     let extends = parcel_rc.contents.extends.as_ref();
-    if extends.is_none() || extends.is_some_and(|e| e.is_empty()) {
+    if extends.is_none()
+      || extends.is_some_and(|extends| match extends {
+        Extends::One(ext) => ext.is_empty(),
+        Extends::Many(ext) => ext.is_empty(),
+      })
+    {
       return Ok((PartialParcelConfig::from(parcel_rc), files));
     }
 
-    // TODO Ensure extends can be an array / single value
-    let extends = extends.unwrap();
+    let extends = match extends.unwrap() {
+      Extends::One(ext) => vec![String::from(ext)],
+      Extends::Many(ext) => ext.to_vec(),
+    };
+
     let mut merged_config: Option<PartialParcelConfig> = None;
     for extend in extends {
-      let extended_file_path = self.resolve_extends(&parcel_rc.path, extend)?;
+      let extended_file_path = self.resolve_extends(&parcel_rc.path, &extend)?;
 
       files.push(extended_file_path.clone());
 
@@ -111,10 +122,11 @@ impl<'a, T: FileSystem, U: PackageManager> ParcelRcConfig<'a, T, U> {
 
   fn resolve_from(&self, project_root: &PathBuf) -> PathBuf {
     let cwd = self.fs.cwd();
-    let relative = diff_paths(project_root, cwd.clone());
-    // TODO check logic
-    let is_cwd_inside_root = !relative.is_some_and(|p| p.starts_with("..") && p.is_absolute());
-    let dir = if is_cwd_inside_root {
+    let relative = diff_paths(cwd.clone(), project_root);
+    let is_cwd_inside_project_root =
+      relative.is_some_and(|p| !p.starts_with("..") && !p.is_absolute());
+
+    let dir = if is_cwd_inside_project_root {
       &cwd
     } else {
       project_root
@@ -190,7 +202,7 @@ mod tests {
     package_manager::{MockPackageManager, Resolution},
   };
 
-  fn project_root() -> PathBuf {
+  fn cwd() -> PathBuf {
     env::current_dir().unwrap()
   }
 
@@ -246,7 +258,7 @@ mod tests {
     specifier: String,
     from: PathBuf,
   ) -> PathBuf {
-    let resolved = project_root()
+    let resolved = cwd()
       .join("node_modules")
       .join(specifier.clone())
       .join("index.json");
@@ -256,7 +268,7 @@ mod tests {
       .with(eq(specifier), eq(from))
       .returning(|specifier, _from| {
         Ok(Resolution {
-          resolved: project_root()
+          resolved: cwd()
             .join("node_modules")
             .join(specifier)
             .join("index.json"),
@@ -280,7 +292,7 @@ mod tests {
       String::from(
         r#"
           {
-            "extends": ["@parcel/config-default"]
+            "extends": "@parcel/config-default"
           }
         "#,
       ),
@@ -371,7 +383,7 @@ mod tests {
 
     #[test]
     fn errors_on_missing_parcelrc_file() {
-      let project_root = project_root();
+      let project_root = cwd();
 
       let err = ParcelRcConfig::new(&MemoryFileSystem::default(), &MockPackageManager::new()).load(
         &project_root,
@@ -393,7 +405,7 @@ mod tests {
 
     #[test]
     fn errors_on_failed_extended_parcelrc_resolution() {
-      let project_root = project_root();
+      let project_root = cwd();
       let (parcel_rc, _extended_parcel_rc, _expected_parcel_config) =
         parcel_rc_fixtures(Rc::new(String::from("/")));
 
@@ -416,7 +428,74 @@ mod tests {
 
     #[test]
     fn returns_default_parcel_config() {
-      let project_root = project_root();
+      let project_root = cwd();
+      let (parcel_rc, expected_parcel_config) = parcel_rc_fixture(Rc::new(
+        project_root.join(".parcelrc").display().to_string(),
+      ));
+
+      let parcel_config = ParcelRcConfig::new(
+        &MemoryFileSystem::new(HashMap::from([(project_root.join(".parcelrc"), parcel_rc)])),
+        &MockPackageManager::default(),
+      )
+      .load(&project_root, None, None);
+
+      assert_eq!(
+        parcel_config.map(to_partial_eq_parcel_config),
+        Ok((
+          expected_parcel_config,
+          vec!(project_root.join(".parcelrc").display().to_string())
+        ))
+      );
+    }
+
+    #[test]
+    fn returns_default_parcel_config_from_project_root() {
+      let project_root = cwd().join("src").join("packages").join("root");
+      let (parcel_rc, expected_parcel_config) = parcel_rc_fixture(Rc::new(
+        project_root.join(".parcelrc").display().to_string(),
+      ));
+
+      let parcel_config = ParcelRcConfig::new(
+        &MemoryFileSystem::new(HashMap::from([(project_root.join(".parcelrc"), parcel_rc)])),
+        &MockPackageManager::default(),
+      )
+      .load(&project_root, None, None);
+
+      assert_eq!(
+        parcel_config.map(to_partial_eq_parcel_config),
+        Ok((
+          expected_parcel_config,
+          vec!(project_root.join(".parcelrc").display().to_string())
+        ))
+      );
+    }
+
+    #[test]
+    fn returns_default_parcel_config_from_project_root_when_outside_cwd() {
+      let project_root = PathBuf::from("/root");
+      let (parcel_rc, expected_parcel_config) = parcel_rc_fixture(Rc::new(
+        project_root.join(".parcelrc").display().to_string(),
+      ));
+
+      let parcel_config = ParcelRcConfig::new(
+        &MemoryFileSystem::new(HashMap::from([(project_root.join(".parcelrc"), parcel_rc)])),
+        &MockPackageManager::default(),
+      )
+      .load(&project_root, None, None);
+
+      assert_eq!(
+        parcel_config.map(to_partial_eq_parcel_config),
+        Ok((
+          expected_parcel_config,
+          vec!(project_root.join(".parcelrc").display().to_string())
+        ))
+      );
+    }
+
+    // TODO
+    #[test]
+    fn returns_merged_default_parcel_config() {
+      let project_root = cwd();
       let (parcel_rc, expected_parcel_config) = parcel_rc_fixture(Rc::new(
         project_root.join(".parcelrc").display().to_string(),
       ));
@@ -443,7 +522,7 @@ mod tests {
 
     #[test]
     fn errors_on_failed_config_resolution() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       fail_package_manager_resolution(&mut package_manager);
@@ -465,11 +544,10 @@ mod tests {
 
     #[test]
     fn errors_on_failed_extended_config_resolution() {
-      let project_root = project_root();
+      let project_root = cwd();
       let config_path = project_root
         .join("node_modules")
-        .join("@scope")
-        .join("config")
+        .join("@scope/config")
         .join("index.json");
 
       let (config, _extended_config, _expected_parcel_config) =
@@ -497,7 +575,7 @@ mod tests {
 
     #[test]
     fn errors_on_missing_config_file() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let config_path = package_manager_resolution(
@@ -526,7 +604,7 @@ mod tests {
 
     #[test]
     fn returns_specified_config() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let config_path = package_manager_resolution(
@@ -561,7 +639,7 @@ mod tests {
 
     #[test]
     fn errors_on_failed_fallback_resolution() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       fail_package_manager_resolution(&mut package_manager);
@@ -583,7 +661,7 @@ mod tests {
 
     #[test]
     fn errors_on_failed_extended_fallback_config_resolution() {
-      let project_root = project_root();
+      let project_root = cwd();
       let fallback_config_path = project_root
         .join("node_modules")
         .join("@scope/config")
@@ -617,7 +695,7 @@ mod tests {
 
     #[test]
     fn errors_on_missing_fallback_config_file() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let fallback_config_path = package_manager_resolution(
@@ -643,7 +721,7 @@ mod tests {
 
     #[test]
     fn returns_project_root_parcel_rc() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let fallback_config_path = package_manager_resolution(
@@ -676,7 +754,7 @@ mod tests {
 
     #[test]
     fn returns_fallback_config_when_parcel_rc_is_missing() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let fallback_config_path = package_manager_resolution(
@@ -708,7 +786,7 @@ mod tests {
 
     #[test]
     fn returns_specified_config() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let config_path = package_manager_resolution(
@@ -738,7 +816,7 @@ mod tests {
 
     #[test]
     fn returns_fallback_config_when_no_matching_config() {
-      let project_root = project_root();
+      let project_root = cwd();
       let mut package_manager = MockPackageManager::new();
 
       let fallback_config_path = package_manager_resolution(
