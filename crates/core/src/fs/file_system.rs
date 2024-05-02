@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::diagnostic::diagnostic_error::DiagnosticError;
 
 pub trait FileSystem {
+  fn canonicalize(&self, path: impl AsRef<Path>) -> Result<PathBuf, DiagnosticError>;
   fn cwd(&self) -> PathBuf;
   fn find_ancestor_file(
     &self,

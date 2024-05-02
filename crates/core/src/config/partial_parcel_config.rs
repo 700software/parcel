@@ -147,6 +147,14 @@ impl PartialParcelConfig {
     from_pipelines: Vec<PluginNode>,
     extend_pipelines: Vec<PluginNode>,
   ) -> Vec<PluginNode> {
+    if extend_pipelines.is_empty() {
+      return from_pipelines;
+    }
+
+    if from_pipelines.is_empty() {
+      return extend_pipelines;
+    }
+
     let spread_index = from_pipelines
       .iter()
       .position(|plugin| plugin.package_name == "...");
@@ -155,9 +163,6 @@ impl PartialParcelConfig {
       None => from_pipelines,
       Some(index) => {
         let extend_pipelines = extend_pipelines.as_slice();
-        if extend_pipelines.is_empty() {
-          return from_pipelines;
-        }
 
         [
           &from_pipelines[..index],
@@ -510,7 +515,7 @@ mod tests {
       }
 
       #[test]
-      fn uses_default_when_from_missing() {
+      fn uses_extend_when_from_missing() {
         let from = PartialParcelConfig::default();
         let extend = PartialParcelConfigBuilder::default()
           .namers(vec![PluginNode {
@@ -520,10 +525,9 @@ mod tests {
           .build()
           .unwrap();
 
-        assert_eq!(
-          PartialParcelConfig::merge(from, extend),
-          PartialParcelConfig::default()
-        );
+        let expected = extend.clone();
+
+        assert_eq!(PartialParcelConfig::merge(from, extend), expected);
       }
 
       #[test]

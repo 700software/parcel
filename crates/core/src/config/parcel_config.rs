@@ -58,16 +58,16 @@ impl PipelineMap {
 
 #[derive(Debug, PartialEq)]
 pub struct ParcelConfig {
-  bundler: PluginNode,
-  compressors: PipelineMap,
-  namers: Vec<PluginNode>,
-  optimizers: PipelineMap,
-  packagers: IndexMap<String, PluginNode>,
-  reporters: Vec<PluginNode>,
-  resolvers: Vec<PluginNode>,
-  runtimes: Vec<PluginNode>,
-  transformers: PipelineMap,
-  validators: PipelineMap,
+  pub(crate) bundler: PluginNode,
+  pub(crate) compressors: PipelineMap,
+  pub(crate) namers: Vec<PluginNode>,
+  pub(crate) optimizers: PipelineMap,
+  pub(crate) packagers: IndexMap<String, PluginNode>,
+  pub(crate) reporters: Vec<PluginNode>,
+  pub(crate) resolvers: Vec<PluginNode>,
+  pub(crate) runtimes: Vec<PluginNode>,
+  pub(crate) transformers: PipelineMap,
+  pub(crate) validators: PipelineMap,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,25 +82,42 @@ impl TryFrom<PartialParcelConfig> for ParcelConfig {
   type Error = DiagnosticError;
 
   fn try_from(config: PartialParcelConfig) -> Result<Self, Self::Error> {
+    // The final stage of merging filters out any extensions (...) as they are essentially a noop now
+    fn filter_out_extends(pipelines: Vec<PluginNode>) -> Vec<PluginNode> {
+      pipelines
+        .into_iter()
+        .filter(|p| p.package_name != "...")
+        .collect()
+    }
+
+    fn filter_out_extends_from_map(
+      map: IndexMap<String, Vec<PluginNode>>,
+    ) -> IndexMap<String, Vec<PluginNode>> {
+      map
+        .into_iter()
+        .map(|(pattern, plugins)| (pattern, filter_out_extends(plugins)))
+        .collect()
+    }
+
     match config.bundler {
       None => Err(DiagnosticError::new(String::from("Missing bundler"))),
       Some(bundler) => Ok(ParcelConfig {
         bundler,
-        compressors: PipelineMap::new(config.compressors),
-        namers: config.namers,
-        optimizers: PipelineMap::new(config.optimizers),
+        compressors: PipelineMap::new(filter_out_extends_from_map(config.compressors)),
+        namers: filter_out_extends(config.namers),
+        optimizers: PipelineMap::new(filter_out_extends_from_map(config.optimizers)),
         packagers: config.packagers,
-        reporters: config.reporters,
-        resolvers: config.resolvers,
-        runtimes: config.runtimes,
-        transformers: PipelineMap::new(config.transformers),
-        validators: PipelineMap::new(config.validators),
+        reporters: filter_out_extends(config.reporters),
+        resolvers: filter_out_extends(config.resolvers),
+        runtimes: filter_out_extends(config.runtimes),
+        transformers: PipelineMap::new(filter_out_extends_from_map(config.transformers)),
+        validators: PipelineMap::new(filter_out_extends_from_map(config.validators)),
       }),
     }
   }
 }
 
-// TODO Remove validations later for anything that does not take in input, should be done at an earlier stage
+// TODO Remove validations later for anything that does not take in input, should be done in parcel_rc_config
 impl ParcelConfig {
   pub fn validators(&self, path: &Path) -> Result<Vec<PluginNode>, DiagnosticError> {
     let pipeline: &Option<&str> = &None;

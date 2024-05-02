@@ -39,16 +39,4 @@ fn main() {
   )
   .load(&project_root, None, None)
   .unwrap();
-
-  let a = parcel_config.bundler.unwrap().resolve_from.to_string();
-
-  let b = parcel_config
-    .reporters
-    .first()
-    .unwrap()
-    .resolve_from
-    .as_str()
-    .to_string();
-
-  println!("{:?}, {}", a, b);
 }

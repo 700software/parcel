@@ -20,6 +20,10 @@ impl MemoryFileSystem {
 }
 
 impl FileSystem for MemoryFileSystem {
+  fn canonicalize(&self, path: impl AsRef<Path>) -> Result<PathBuf, DiagnosticError> {
+    Ok(PathBuf::from(path.as_ref()))
+  }
+
   fn cwd(&self) -> PathBuf {
     env::current_dir().expect("Failed to load the current working directory")
   }

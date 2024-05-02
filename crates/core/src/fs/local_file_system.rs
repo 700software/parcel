@@ -57,4 +57,8 @@ impl FileSystem for LocalFileSystem {
     fs::read_to_string(file_path)
       .map_err(|source| DiagnosticError::new_source(format!("Failed to read file"), source))
   }
+
+  fn canonicalize(&self, path: impl AsRef<Path>) -> Result<PathBuf, DiagnosticError> {
+    todo!()
+  }
 }
