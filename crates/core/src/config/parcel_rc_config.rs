@@ -303,7 +303,7 @@ mod tests {
   struct ParcelRcConfigBuilder {}
 
   impl ParcelRcConfigBuilder {
-    pub fn default_config(resolve_from: &Rc<String>) -> ConfigFixture {
+    pub fn default_config(resolve_from: &Rc<PathBuf>) -> ConfigFixture {
       ConfigFixture {
         parcel_config: ParcelConfig {
           bundler: PluginNode {
@@ -377,21 +377,19 @@ mod tests {
             }
           "#,
         ),
-        path: PathBuf::from(resolve_from.to_string()),
+        path: PathBuf::from(resolve_from.display().to_string()),
       }
     }
 
     fn extended_config_from(
       project_root: &PathBuf,
-      base_resolve_from: Rc<String>,
+      base_resolve_from: Rc<PathBuf>,
     ) -> ExtendedConfigFixture {
       let extended_resolve_from = Rc::from(
         project_root
           .join("node_modules")
           .join("@parcel/config-default")
-          .join("index.json")
-          .display()
-          .to_string(),
+          .join("index.json"),
       );
 
       let extended_config = ParcelRcConfigBuilder::default_config(&extended_resolve_from);
@@ -455,7 +453,7 @@ mod tests {
           validators: PipelineMap::new(IndexMap::new()),
         },
         base_config: PartialConfigFixture {
-          path: PathBuf::from(base_resolve_from.to_string()),
+          path: PathBuf::from(base_resolve_from.as_os_str()),
           parcel_rc: String::from(
             r#"
               {
@@ -479,20 +477,17 @@ mod tests {
     }
 
     pub fn default_extended_config(project_root: &PathBuf) -> ExtendedConfigFixture {
-      let base_resolve_from: Rc<String> =
-        Rc::from(project_root.join(".parcelrc").display().to_string());
+      let base_resolve_from = Rc::from(project_root.join(".parcelrc"));
 
       ParcelRcConfigBuilder::extended_config_from(project_root, base_resolve_from)
     }
 
     pub fn extended_config(project_root: &PathBuf) -> (String, ExtendedConfigFixture) {
-      let base_resolve_from: Rc<String> = Rc::from(
+      let base_resolve_from = Rc::from(
         project_root
           .join("node_modules")
           .join("@config/default")
-          .join("index.json")
-          .display()
-          .to_string(),
+          .join("index.json"),
       );
 
       (
@@ -555,9 +550,8 @@ mod tests {
     #[test]
     fn returns_default_parcel_config() {
       let project_root = cwd();
-      let default_config = ParcelRcConfigBuilder::default_config(&Rc::new(
-        project_root.join(".parcelrc").display().to_string(),
-      ));
+      let default_config =
+        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(
@@ -580,9 +574,8 @@ mod tests {
     #[test]
     fn returns_default_parcel_config_from_project_root() {
       let project_root = cwd().join("src").join("packages").join("root");
-      let default_config = ParcelRcConfigBuilder::default_config(&Rc::new(
-        project_root.join(".parcelrc").display().to_string(),
-      ));
+      let default_config =
+        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(
@@ -605,9 +598,8 @@ mod tests {
     #[test]
     fn returns_default_parcel_config_from_project_root_when_outside_cwd() {
       let project_root = PathBuf::from("/root");
-      let default_config = ParcelRcConfigBuilder::default_config(&Rc::new(
-        project_root.join(".parcelrc").display().to_string(),
-      ));
+      let default_config =
+        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(
@@ -753,8 +745,7 @@ mod tests {
       );
 
       let files = vec![config_path.display().to_string()];
-      let specified_config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(config_path.display().to_string()));
+      let specified_config = ParcelRcConfigBuilder::default_config(&Rc::new(config_path));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -863,9 +854,8 @@ mod tests {
         project_root.join("index"),
       );
 
-      let project_root_config = ParcelRcConfigBuilder::default_config(&Rc::new(
-        project_root.join(".parcelrc").display().to_string(),
-      ));
+      let project_root_config =
+        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -900,8 +890,7 @@ mod tests {
       );
 
       let files = vec![fallback_config_path.display().to_string()];
-      let fallback =
-        ParcelRcConfigBuilder::default_config(&Rc::new(fallback_config_path.display().to_string()));
+      let fallback = ParcelRcConfigBuilder::default_config(&Rc::new(fallback_config_path));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(fallback.path, fallback.parcel_rc)])),
@@ -932,8 +921,7 @@ mod tests {
       );
 
       let files = vec![config_path.display().to_string()];
-      let config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(config_path.display().to_string()));
+      let config = ParcelRcConfigBuilder::default_config(&Rc::new(config_path));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -962,8 +950,7 @@ mod tests {
       );
 
       let files = vec![fallback_config_path.display().to_string()];
-      let fallback_config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(fallback_config_path.display().to_string()));
+      let fallback_config = ParcelRcConfigBuilder::default_config(&Rc::new(fallback_config_path));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([

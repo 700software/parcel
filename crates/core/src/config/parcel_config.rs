@@ -1,6 +1,9 @@
 use glob_match::glob_match;
 use indexmap::IndexMap;
-use std::{path::Path, rc::Rc};
+use std::{
+  path::{Path, PathBuf},
+  rc::Rc,
+};
 
 use crate::diagnostic::diagnostic_error::DiagnosticError;
 
@@ -73,7 +76,7 @@ pub struct ParcelConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PluginNode {
   pub package_name: String,
-  pub resolve_from: Rc<String>,
+  pub resolve_from: Rc<PathBuf>,
 }
 
 pub struct ProjectPath(String);

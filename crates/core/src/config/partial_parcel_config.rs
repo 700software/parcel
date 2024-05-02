@@ -25,7 +25,7 @@ pub struct PartialParcelConfig {
 
 impl From<&ParcelRcFile> for PartialParcelConfig {
   fn from(parcel_rc: &ParcelRcFile) -> Self {
-    let resolve_from = Rc::new(parcel_rc.path.display().to_string());
+    let resolve_from = Rc::new(parcel_rc.path.clone());
 
     let to_entry = |package_name: &String| PluginNode {
       package_name: String::from(package_name),
@@ -221,12 +221,14 @@ mod tests {
     mod bundler {
       use super::*;
 
+      use std::path::PathBuf;
+
       #[test]
       fn uses_from_when_extend_missing() {
         let from = PartialParcelConfigBuilder::default()
           .bundler(Some(PluginNode {
             package_name: String::from("a"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }))
           .build()
           .unwrap();
@@ -243,7 +245,7 @@ mod tests {
         let extend = PartialParcelConfigBuilder::default()
           .bundler(Some(PluginNode {
             package_name: String::from("a"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }))
           .build()
           .unwrap();
@@ -258,7 +260,7 @@ mod tests {
         let from = PartialParcelConfigBuilder::default()
           .bundler(Some(PluginNode {
             package_name: String::from("a"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }))
           .build()
           .unwrap();
@@ -266,7 +268,7 @@ mod tests {
         let extend = PartialParcelConfigBuilder::default()
           .bundler(Some(PluginNode {
             package_name: String::from("b"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }))
           .build()
           .unwrap();
@@ -280,7 +282,9 @@ mod tests {
     // TODO parameterize tests
     mod compressors {
       use super::*;
+
       use indexmap::indexmap;
+      use std::path::PathBuf;
 
       #[test]
       fn uses_from_when_extend_missing() {
@@ -288,7 +292,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -307,7 +311,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -324,7 +328,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -334,7 +338,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.{cjs,js,mjs}") => vec!(PluginNode {
               package_name: String::from("b"),
-              resolve_from: Rc::new(String::from("~")),
+              resolve_from: Rc::new(PathBuf::from("~")),
             })
           })
           .build()
@@ -346,11 +350,11 @@ mod tests {
             .compressors(indexmap! {
               String::from("*.js") => vec!(PluginNode {
                 package_name: String::from("a"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               }),
               String::from("*.{cjs,js,mjs}") => vec!(PluginNode {
                 package_name: String::from("b"),
-                resolve_from: Rc::new(String::from("~")),
+                resolve_from: Rc::new(PathBuf::from("~")),
               }),
             })
             .build()
@@ -364,10 +368,10 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             }, PluginNode {
               package_name: String::from("b"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -377,7 +381,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("c"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -394,15 +398,15 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("..."),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("c"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -412,7 +416,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("b"),
-              resolve_from: Rc::new(String::from("~")),
+              resolve_from: Rc::new(PathBuf::from("~")),
             })
           })
           .build()
@@ -424,15 +428,15 @@ mod tests {
             .compressors(indexmap! {
               String::from("*.js") => vec!(PluginNode {
                 package_name: String::from("a"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               },
               PluginNode {
                 package_name: String::from("b"),
-                resolve_from: Rc::new(String::from("~")),
+                resolve_from: Rc::new(PathBuf::from("~")),
               },
               PluginNode {
                 package_name: String::from("c"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               })
             })
             .build()
@@ -446,15 +450,15 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("..."),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("c"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             })
           })
           .build()
@@ -465,7 +469,7 @@ mod tests {
           .compressors(indexmap! {
             String::from("*.js") => vec!(PluginNode {
               package_name: String::from("b"),
-              resolve_from: Rc::new(String::from("~")),
+              resolve_from: Rc::new(PathBuf::from("~")),
             })
           })
           .build()
@@ -477,15 +481,15 @@ mod tests {
             .compressors(indexmap! {
               String::from("*.js") => vec!(PluginNode {
                 package_name: String::from("a"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               },
               PluginNode {
                 package_name: String::from("b"),
-                resolve_from: Rc::new(String::from("~")),
+                resolve_from: Rc::new(PathBuf::from("~")),
               },
               PluginNode {
                 package_name: String::from("c"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               })
             })
             .build()
@@ -498,12 +502,14 @@ mod tests {
     mod namers {
       use super::*;
 
+      use std::path::PathBuf;
+
       #[test]
       fn uses_from_when_extend_missing() {
         let from = PartialParcelConfigBuilder::default()
           .namers(vec![PluginNode {
             package_name: String::from("a"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }])
           .build()
           .unwrap();
@@ -520,7 +526,7 @@ mod tests {
         let extend = PartialParcelConfigBuilder::default()
           .namers(vec![PluginNode {
             package_name: String::from("a"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }])
           .build()
           .unwrap();
@@ -536,11 +542,11 @@ mod tests {
           .namers(vec![
             PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("b"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
           ])
           .build()
@@ -549,7 +555,7 @@ mod tests {
         let extend = PartialParcelConfigBuilder::default()
           .namers(vec![PluginNode {
             package_name: String::from("c"),
-            resolve_from: Rc::new(String::from("/")),
+            resolve_from: Rc::new(PathBuf::from("/")),
           }])
           .build()
           .unwrap();
@@ -565,15 +571,15 @@ mod tests {
           .namers(vec![
             PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("..."),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("c"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
           ])
           .build()
@@ -582,7 +588,7 @@ mod tests {
         let extend = PartialParcelConfigBuilder::default()
           .namers(vec![PluginNode {
             package_name: String::from("b"),
-            resolve_from: Rc::new(String::from("~")),
+            resolve_from: Rc::new(PathBuf::from("~")),
           }])
           .build()
           .unwrap();
@@ -593,15 +599,15 @@ mod tests {
             .namers(vec!(
               PluginNode {
                 package_name: String::from("a"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               },
               PluginNode {
                 package_name: String::from("b"),
-                resolve_from: Rc::new(String::from("~")),
+                resolve_from: Rc::new(PathBuf::from("~")),
               },
               PluginNode {
                 package_name: String::from("c"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               }
             ))
             .build()
@@ -615,15 +621,15 @@ mod tests {
           .namers(vec![
             PluginNode {
               package_name: String::from("a"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("..."),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
             PluginNode {
               package_name: String::from("c"),
-              resolve_from: Rc::new(String::from("/")),
+              resolve_from: Rc::new(PathBuf::from("/")),
             },
           ])
           .build()
@@ -633,7 +639,7 @@ mod tests {
         let extend_2 = PartialParcelConfigBuilder::default()
           .namers(vec![PluginNode {
             package_name: String::from("b"),
-            resolve_from: Rc::new(String::from("~")),
+            resolve_from: Rc::new(PathBuf::from("~")),
           }])
           .build()
           .unwrap();
@@ -644,15 +650,15 @@ mod tests {
             .namers(vec!(
               PluginNode {
                 package_name: String::from("a"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               },
               PluginNode {
                 package_name: String::from("b"),
-                resolve_from: Rc::new(String::from("~")),
+                resolve_from: Rc::new(PathBuf::from("~")),
               },
               PluginNode {
                 package_name: String::from("c"),
-                resolve_from: Rc::new(String::from("/")),
+                resolve_from: Rc::new(PathBuf::from("/")),
               }
             ))
             .build()
