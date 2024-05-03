@@ -189,11 +189,9 @@ mod tests {
   use super::*;
   use std::{env, rc::Rc};
 
-  use indexmap::{indexmap, IndexMap};
   use mockall::predicate::eq;
 
   use crate::{
-    config::plugin::{PipelineMap, PluginNode},
     fs::memory_file_system::MemoryFileSystem,
     package_manager::{MockPackageManager, Resolution},
   };
@@ -408,10 +406,10 @@ mod tests {
   }
 
   mod config {
-    use crate::config::parcel_config_fixtures::{default_config, extended_config};
+    use crate::config::parcel_config_fixtures::{config, extended_config};
 
     use super::*;
-    use std::{collections::HashMap, rc::Rc};
+    use std::collections::HashMap;
 
     #[test]
     fn errors_on_failed_config_resolution() {
@@ -494,32 +492,26 @@ mod tests {
     #[test]
     fn returns_specified_config() {
       let project_root = cwd();
-      let mut package_manager = MockPackageManager::new();
-
-      let config_path = package_manager_resolution(
-        &mut package_manager,
-        String::from("@scope/config"),
-        project_root.join("index"),
-      );
-
-      let specified_config = default_config(&Rc::new(config_path));
+      let (specifier, specified_config) = config(&project_root);
       let files = vec![specified_config.path.clone()];
 
-      let parcel_config = ParcelRcConfig::new(
-        &MemoryFileSystem::new(HashMap::from([
-          (project_root.join(".parcelrc"), String::from("{}")),
-          (specified_config.path, specified_config.parcel_rc),
-        ])),
-        &package_manager,
-      )
-      .load(&project_root, Some(String::from("@scope/config")), None);
+      let fs = MemoryFileSystem::new(HashMap::from([
+        (project_root.join(".parcelrc"), String::from("{}")),
+        (specified_config.path, specified_config.parcel_rc),
+      ]));
+
+      let parcel_config = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        Some(specifier),
+        None,
+      );
 
       assert_eq!(parcel_config, Ok((specified_config.parcel_config, files)));
     }
   }
 
   mod fallback_config {
-    use crate::config::parcel_config_fixtures::{default_config, extended_config};
+    use crate::config::parcel_config_fixtures::{default_config, extended_config, fallback_config};
 
     use super::*;
     use std::{collections::HashMap, rc::Rc};
@@ -534,13 +526,13 @@ mod tests {
       let err = ParcelRcConfig::new(&MemoryFileSystem::default(), &package_manager).load(
         &project_root,
         None,
-        Some(String::from("@scope/config")),
+        Some(String::from("@parcel/config-default")),
       );
 
       assert_eq!(
         err,
         Err(DiagnosticError::new(format!(
-          "Failed to resolve @scope/config from {}",
+          "Failed to resolve @parcel/config-default from {}",
           project_root.join("index").display()
         )))
       );
@@ -549,17 +541,17 @@ mod tests {
     #[test]
     fn errors_on_failed_extended_fallback_config_resolution() {
       let project_root = cwd();
-      let (specifier, fallback_config) = extended_config(&project_root);
+      let (fallback_specifier, fallback) = extended_config(&project_root);
 
       let fs = MemoryFileSystem::new(HashMap::from([(
-        fallback_config.base_config.path.clone(),
-        fallback_config.base_config.parcel_rc,
+        fallback.base_config.path.clone(),
+        fallback.base_config.parcel_rc,
       )]));
 
       let err = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
         &project_root,
-        Some(specifier),
         None,
+        Some(fallback_specifier),
       );
 
       assert_eq!(
@@ -567,7 +559,7 @@ mod tests {
         Err(
           DiagnosticError::new(format!(
             "Failed to resolve extended config @parcel/config-default from {}",
-            fallback_config.base_config.path.display()
+            fallback.base_config.path.display()
           ))
           .to_string()
         )
@@ -581,14 +573,14 @@ mod tests {
 
       let fallback_config_path = package_manager_resolution(
         &mut package_manager,
-        String::from("@scope/config"),
+        String::from("@parcel/config-default"),
         project_root.join("index"),
       );
 
       let err = ParcelRcConfig::new(&MemoryFileSystem::default(), &package_manager).load(
         &project_root,
         None,
-        Some(String::from("@scope/config")),
+        Some(String::from("@parcel/config-default")),
       );
 
       assert_eq!(
@@ -603,27 +595,22 @@ mod tests {
     #[test]
     fn returns_project_root_parcel_rc() {
       let project_root = cwd();
-      let mut package_manager = MockPackageManager::new();
-
-      let fallback_config_path = package_manager_resolution(
-        &mut package_manager,
-        String::from("@scope/config"),
-        project_root.join("index"),
-      );
-
+      let (fallback_specifier, fallback) = fallback_config(&project_root);
       let project_root_config = default_config(&Rc::new(project_root.join(".parcelrc")));
 
-      let parcel_config = ParcelRcConfig::new(
-        &MemoryFileSystem::new(HashMap::from([
-          (
-            project_root_config.path.clone(),
-            project_root_config.parcel_rc,
-          ),
-          (fallback_config_path, String::from("{}")),
-        ])),
-        &package_manager,
-      )
-      .load(&project_root, None, Some(String::from("@scope/config")));
+      let fs = MemoryFileSystem::new(HashMap::from([
+        (
+          project_root_config.path.clone(),
+          project_root_config.parcel_rc,
+        ),
+        (fallback.path, String::from("{}")),
+      ]));
+
+      let parcel_config = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        None,
+        Some(fallback_specifier),
+      );
 
       assert_eq!(
         parcel_config,
@@ -637,83 +624,62 @@ mod tests {
     #[test]
     fn returns_fallback_config_when_parcel_rc_is_missing() {
       let project_root = cwd();
-      let mut package_manager = MockPackageManager::new();
-
-      let fallback_config_path = package_manager_resolution(
-        &mut package_manager,
-        String::from("@scope/config"),
-        project_root.join("index"),
-      );
-
-      let fallback = default_config(&Rc::new(fallback_config_path));
+      let (fallback_specifier, fallback) = fallback_config(&project_root);
       let files = vec![fallback.path.clone()];
+      let fs = MemoryFileSystem::new(HashMap::from([(fallback.path, fallback.parcel_rc)]));
 
-      let parcel_config = ParcelRcConfig::new(
-        &MemoryFileSystem::new(HashMap::from([(fallback.path, fallback.parcel_rc)])),
-        &package_manager,
-      )
-      .load(&project_root, None, Some(String::from("@scope/config")));
+      let parcel_config = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        None,
+        Some(fallback_specifier),
+      );
 
       assert_eq!(parcel_config, Ok((fallback.parcel_config, files)));
     }
   }
 
   mod fallback_with_config {
-    use crate::config::parcel_config_fixtures::default_config;
+    use crate::config::parcel_config_fixtures::{config, fallback_config};
 
     use super::*;
-    use std::{collections::HashMap, rc::Rc};
+    use std::collections::HashMap;
 
     #[test]
     fn returns_specified_config() {
       let project_root = cwd();
-      let mut package_manager = MockPackageManager::new();
-
-      let config_path = package_manager_resolution(
-        &mut package_manager,
-        String::from("@scope/config"),
-        project_root.join("index"),
-      );
-
-      let config = default_config(&Rc::new(config_path));
+      let (config_specifier, config) = config(&project_root);
+      let (fallback_config_specifier, fallback_config) = fallback_config(&project_root);
       let files = vec![config.path.clone()];
 
-      let parcel_config = ParcelRcConfig::new(
-        &MemoryFileSystem::new(HashMap::from([
-          (project_root.join(".parcelrc"), String::from("{}")),
-          (config.path, config.parcel_rc),
-        ])),
-        &package_manager,
-      )
-      .load(&project_root, Some(String::from("@scope/config")), None);
+      let fs = MemoryFileSystem::new(HashMap::from([
+        (config.path, config.parcel_rc),
+        (fallback_config.path, fallback_config.parcel_rc),
+      ]));
+
+      let parcel_config = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        Some(config_specifier),
+        Some(fallback_config_specifier),
+      );
 
       assert_eq!(parcel_config, Ok((config.parcel_config, files)));
     }
 
     #[test]
-    fn returns_fallback_config_when_no_matching_config() {
+    fn returns_fallback_config_when_config_file_missing() {
       let project_root = cwd();
-      let mut package_manager = MockPackageManager::new();
+      let (config_specifier, _config) = config(&project_root);
+      let (fallback_specifier, fallback) = fallback_config(&project_root);
+      let files = vec![fallback.path.clone()];
+      let fs = MemoryFileSystem::new(HashMap::from([(fallback.path, fallback.parcel_rc)]));
 
-      let fallback_config_path = package_manager_resolution(
-        &mut package_manager,
-        String::from("@scope/config"),
-        project_root.join("index"),
+      let parcel_config = ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(
+        &project_root,
+        Some(config_specifier),
+        Some(fallback_specifier),
       );
 
-      let fallback_config = default_config(&Rc::new(fallback_config_path));
-      let files = vec![fallback_config.path.clone()];
-
-      let parcel_config = ParcelRcConfig::new(
-        &MemoryFileSystem::new(HashMap::from([
-          (project_root.join(".parcelrc"), String::from("{}")),
-          (fallback_config.path, fallback_config.parcel_rc),
-        ])),
-        &package_manager,
-      )
-      .load(&project_root, Some(String::from("@scope/config")), None);
-
-      assert_eq!(parcel_config, Ok((fallback_config.parcel_config, files)));
+      assert_eq!(parcel_config, Ok((fallback.parcel_config, files)));
     }
   }
 

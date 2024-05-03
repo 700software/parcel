@@ -24,7 +24,29 @@ pub struct ExtendedConfigFixture {
   pub parcel_config: ParcelConfig,
 }
 
-// pub fn config_from() -> (String, ConfigFixture) {}
+pub fn config(project_root: &PathBuf) -> (String, ConfigFixture) {
+  (
+    String::from("@config/default"),
+    default_config(&Rc::from(
+      project_root
+        .join("node_modules")
+        .join("@config/default")
+        .join("index.json"),
+    )),
+  )
+}
+
+pub fn fallback_config(project_root: &PathBuf) -> (String, ConfigFixture) {
+  (
+    String::from("@parcel/config-default"),
+    default_config(&Rc::from(
+      project_root
+        .join("node_modules")
+        .join("@parcel/config-default")
+        .join("index.json"),
+    )),
+  )
+}
 
 pub fn default_config(resolve_from: &Rc<PathBuf>) -> ConfigFixture {
   ConfigFixture {
@@ -77,28 +99,28 @@ pub fn default_config(resolve_from: &Rc<PathBuf>) -> ConfigFixture {
     },
     parcel_rc: String::from(
       r#"
-            {
-              "bundler": "@parcel/bundler-default",
-              "compressors": {
-                "*": ["@parcel/compressor-raw"]
-              },
-              "namers": ["@parcel/namer-default"],
-              "optimizers": {
-                "*.{js,mjs,cjs}": ["@parcel/optimizer-swc"]
-              },
-              "packagers": {
-                "*.{js,mjs,cjs}": "@parcel/packager-js"
-              },
-              "reporters": ["@parcel/reporter-dev-server"],
-              "resolvers": ["@parcel/resolver-default"],
-              "runtimes": ["@parcel/runtime-js"],
-              "transformers": {
-                "*.{js,mjs,jsm,jsx,es6,cjs,ts,tsx}": [
-                  "@parcel/transformer-js"
-                ],
-              }
-            }
-          "#,
+        {
+          "bundler": "@parcel/bundler-default",
+          "compressors": {
+            "*": ["@parcel/compressor-raw"]
+          },
+          "namers": ["@parcel/namer-default"],
+          "optimizers": {
+            "*.{js,mjs,cjs}": ["@parcel/optimizer-swc"]
+          },
+          "packagers": {
+            "*.{js,mjs,cjs}": "@parcel/packager-js"
+          },
+          "reporters": ["@parcel/reporter-dev-server"],
+          "resolvers": ["@parcel/resolver-default"],
+          "runtimes": ["@parcel/runtime-js"],
+          "transformers": {
+            "*.{js,mjs,jsm,jsx,es6,cjs,ts,tsx}": [
+              "@parcel/transformer-js"
+            ],
+          }
+        }
+      "#,
     ),
     path: PathBuf::from(resolve_from.display().to_string()),
   }
@@ -179,17 +201,17 @@ fn extended_config_from(
       path: PathBuf::from(base_resolve_from.as_os_str()),
       parcel_rc: String::from(
         r#"
-              {
-                "extends": "@parcel/config-default",
-                "reporters": ["...", "@scope/parcel-metrics-reporter"],
-                "transformers": {
-                  "*.{ts,tsx}": [
-                    "@scope/parcel-transformer-ts",
-                    "..."
-                  ]
-                }
-              }
-            "#,
+          {
+            "extends": "@parcel/config-default",
+            "reporters": ["...", "@scope/parcel-metrics-reporter"],
+            "transformers": {
+              "*.{ts,tsx}": [
+                "@scope/parcel-transformer-ts",
+                "..."
+              ]
+            }
+          }
+        "#,
       ),
     },
     extended_config: PartialConfigFixture {
