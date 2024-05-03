@@ -2,7 +2,7 @@ use derive_builder::Builder;
 use indexmap::IndexMap;
 use std::{collections::HashSet, rc::Rc};
 
-use super::{parcel_config::PluginNode, parcel_rc::ParcelRcFile};
+use super::{parcel_rc::ParcelRcFile, plugin::PluginNode};
 
 /// An intermediate representation of the .parcelrc config
 ///

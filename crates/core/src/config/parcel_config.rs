@@ -1,63 +1,13 @@
-use glob_match::glob_match;
+use std::path::Path;
+
 use indexmap::IndexMap;
-use std::{
-  path::{Path, PathBuf},
-  rc::Rc,
-};
 
 use crate::diagnostic::diagnostic_error::DiagnosticError;
 
-use super::partial_parcel_config::PartialParcelConfig;
-
-#[derive(Debug, PartialEq)]
-pub struct PipelineMap {
-  map: IndexMap<String, Vec<PluginNode>>,
-}
-
-impl PipelineMap {
-  pub fn new(map: IndexMap<String, Vec<PluginNode>>) -> Self {
-    Self { map }
-  }
-
-  pub fn get(&self, path: &Path, pipeline: &Option<impl AsRef<str>>) -> Vec<PluginNode> {
-    let basename = path.file_name().unwrap().to_str().unwrap();
-    let path = path.as_os_str().to_str().unwrap();
-
-    let mut matches = Vec::new();
-    if let Some(pipeline) = pipeline {
-      let exact_match = self
-        .map
-        .iter()
-        .find(|(pattern, _)| is_match(pattern, path, basename, pipeline.as_ref()));
-
-      if let Some((_, m)) = exact_match {
-        matches.push(m);
-      } else {
-        return Vec::new();
-      }
-    }
-
-    for (pattern, pipeline) in self.map.iter() {
-      if is_match(pattern, path, basename, "") {
-        matches.push(pipeline);
-      }
-    }
-
-    if matches.is_empty() {
-      return Vec::new();
-    }
-
-    fn flatten(matches: &mut Vec<&Vec<PluginNode>>) -> Vec<PluginNode> {
-      matches
-        .remove(0)
-        .into_iter()
-        .flat_map(|plugin| vec![plugin.clone()])
-        .collect()
-    }
-
-    flatten(&mut matches)
-  }
-}
+use super::{
+  partial_parcel_config::PartialParcelConfig,
+  plugin::{is_match, PipelineMap, PluginNode},
+};
 
 #[derive(Debug, PartialEq)]
 pub struct ParcelConfig {
@@ -73,19 +23,11 @@ pub struct ParcelConfig {
   pub(crate) validators: PipelineMap,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct PluginNode {
-  pub package_name: String,
-  pub resolve_from: Rc<PathBuf>,
-}
-
-pub struct ProjectPath(String);
-
 impl TryFrom<PartialParcelConfig> for ParcelConfig {
   type Error = DiagnosticError;
 
   fn try_from(config: PartialParcelConfig) -> Result<Self, Self::Error> {
-    // The final stage of merging filters out any extensions (...) as they are essentially a noop now
+    // The final stage of merging filters out any ... extensions as they are a noop
     fn filter_out_extends(pipelines: Vec<PluginNode>) -> Vec<PluginNode> {
       pipelines
         .into_iter()
@@ -202,13 +144,7 @@ impl ParcelConfig {
     // If a pipeline is specified, but it doesn't exist in the optimizers config, ignore it.
     // Pipelines for bundles come from their entry assets, so the pipeline likely exists in transformers.
     if let Some(p) = pipeline {
-      let prefix = format!("{}:", p.as_ref());
-      if !self
-        .optimizers
-        .map
-        .keys()
-        .any(|glob| glob.starts_with(&prefix))
-      {
+      if !self.optimizers.contains_named_pipeline(p) {
         use_empty_pipeline = true;
       }
     }
@@ -249,19 +185,6 @@ impl ParcelConfig {
   fn missing_plugin_error<T>(&self, msg: String) -> Result<T, DiagnosticError> {
     Err(DiagnosticError::new(msg))
   }
-}
-
-fn is_match(pattern: &str, path: &str, basename: &str, pipeline: &str) -> bool {
-  let (pattern_pipeline, glob) = pattern.split_once(':').unwrap_or(("", pattern));
-  if pipeline.is_empty() && pattern_pipeline.is_empty() {
-    return false;
-  }
-
-  if !pipeline.is_empty() && pipeline != pattern_pipeline {
-    return false;
-  }
-
-  return glob_match(glob, basename) || glob_match(glob, path);
 }
 
 // TODO Testing

@@ -193,7 +193,7 @@ mod tests {
   use mockall::predicate::eq;
 
   use crate::{
-    config::parcel_config::{PipelineMap, PluginNode},
+    config::plugin::{PipelineMap, PluginNode},
     fs::memory_file_system::MemoryFileSystem,
     package_manager::{MockPackageManager, Resolution},
   };
@@ -274,230 +274,9 @@ mod tests {
     resolved
   }
 
-  fn to_partial_eq_parcel_config(
-    config: (ParcelConfig, Vec<PathBuf>),
-  ) -> (ParcelConfig, Vec<String>) {
-    (
-      config.0,
-      config.1.iter().map(|p| p.display().to_string()).collect(),
-    )
-  }
-
-  struct ConfigFixture {
-    parcel_config: ParcelConfig,
-    parcel_rc: String,
-    path: PathBuf,
-  }
-
-  struct PartialConfigFixture {
-    parcel_rc: String,
-    path: PathBuf,
-  }
-
-  struct ExtendedConfigFixture {
-    base_config: PartialConfigFixture,
-    extended_config: PartialConfigFixture,
-    parcel_config: ParcelConfig,
-  }
-
-  struct ParcelRcConfigBuilder {}
-
-  impl ParcelRcConfigBuilder {
-    pub fn default_config(resolve_from: &Rc<PathBuf>) -> ConfigFixture {
-      ConfigFixture {
-        parcel_config: ParcelConfig {
-          bundler: PluginNode {
-            package_name: String::from("@parcel/bundler-default"),
-            resolve_from: Rc::clone(&resolve_from),
-          },
-          compressors: PipelineMap::new(indexmap! {
-            String::from("*") => vec!(PluginNode {
-              package_name: String::from("@parcel/compressor-raw"),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-          }),
-          namers: vec![PluginNode {
-            package_name: String::from("@parcel/namer-default"),
-            resolve_from: Rc::clone(&resolve_from),
-          }],
-          optimizers: PipelineMap::new(indexmap! {
-            String::from("*.{js,mjs,cjs}") => vec!(PluginNode {
-              package_name: String::from("@parcel/optimizer-swc"),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-          }),
-          packagers: indexmap! {
-            String::from("*.{js,mjs,cjs}") => PluginNode {
-              package_name: String::from("@parcel/packager-js"),
-              resolve_from: Rc::clone(&resolve_from),
-            }
-          },
-          reporters: vec![PluginNode {
-            package_name: String::from("@parcel/reporter-dev-server"),
-            resolve_from: Rc::clone(&resolve_from),
-          }],
-          resolvers: vec![PluginNode {
-            package_name: String::from("@parcel/resolver-default"),
-            resolve_from: Rc::clone(&resolve_from),
-          }],
-          runtimes: vec![PluginNode {
-            package_name: String::from("@parcel/runtime-js"),
-            resolve_from: Rc::clone(&resolve_from),
-          }],
-          transformers: PipelineMap::new(indexmap! {
-            String::from("*.{js,mjs,jsm,jsx,es6,cjs,ts,tsx}") => vec!(PluginNode {
-              package_name: String::from("@parcel/transformer-js"),
-              resolve_from: Rc::clone(&resolve_from),
-            })
-          }),
-          validators: PipelineMap::new(IndexMap::new()),
-        },
-        parcel_rc: String::from(
-          r#"
-            {
-              "bundler": "@parcel/bundler-default",
-              "compressors": {
-                "*": ["@parcel/compressor-raw"]
-              },
-              "namers": ["@parcel/namer-default"],
-              "optimizers": {
-                "*.{js,mjs,cjs}": ["@parcel/optimizer-swc"]
-              },
-              "packagers": {
-                "*.{js,mjs,cjs}": "@parcel/packager-js"
-              },
-              "reporters": ["@parcel/reporter-dev-server"],
-              "resolvers": ["@parcel/resolver-default"],
-              "runtimes": ["@parcel/runtime-js"],
-              "transformers": {
-                "*.{js,mjs,jsm,jsx,es6,cjs,ts,tsx}": [
-                  "@parcel/transformer-js"
-                ],
-              }
-            }
-          "#,
-        ),
-        path: PathBuf::from(resolve_from.display().to_string()),
-      }
-    }
-
-    fn extended_config_from(
-      project_root: &PathBuf,
-      base_resolve_from: Rc<PathBuf>,
-    ) -> ExtendedConfigFixture {
-      let extended_resolve_from = Rc::from(
-        project_root
-          .join("node_modules")
-          .join("@parcel/config-default")
-          .join("index.json"),
-      );
-
-      let extended_config = ParcelRcConfigBuilder::default_config(&extended_resolve_from);
-
-      ExtendedConfigFixture {
-        parcel_config: ParcelConfig {
-          bundler: PluginNode {
-            package_name: String::from("@parcel/bundler-default"),
-            resolve_from: Rc::clone(&extended_resolve_from),
-          },
-          compressors: PipelineMap::new(indexmap! {
-            String::from("*") => vec!(PluginNode {
-              package_name: String::from("@parcel/compressor-raw"),
-              resolve_from: Rc::clone(&extended_resolve_from),
-            })
-          }),
-          namers: vec![PluginNode {
-            package_name: String::from("@parcel/namer-default"),
-            resolve_from: Rc::clone(&extended_resolve_from),
-          }],
-          optimizers: PipelineMap::new(indexmap! {
-            String::from("*.{js,mjs,cjs}") => vec!(PluginNode {
-              package_name: String::from("@parcel/optimizer-swc"),
-              resolve_from: Rc::clone(&extended_resolve_from),
-            })
-          }),
-          packagers: indexmap! {
-            String::from("*.{js,mjs,cjs}") => PluginNode {
-              package_name: String::from("@parcel/packager-js"),
-              resolve_from: Rc::clone(&extended_resolve_from),
-            }
-          },
-          reporters: vec![
-            PluginNode {
-              package_name: String::from("@parcel/reporter-dev-server"),
-              resolve_from: Rc::clone(&extended_resolve_from),
-            },
-            PluginNode {
-              package_name: String::from("@scope/parcel-metrics-reporter"),
-              resolve_from: Rc::clone(&base_resolve_from),
-            },
-          ],
-          resolvers: vec![PluginNode {
-            package_name: String::from("@parcel/resolver-default"),
-            resolve_from: Rc::clone(&extended_resolve_from),
-          }],
-          runtimes: vec![PluginNode {
-            package_name: String::from("@parcel/runtime-js"),
-            resolve_from: Rc::clone(&extended_resolve_from),
-          }],
-          transformers: PipelineMap::new(indexmap! {
-            String::from("*.{js,mjs,jsm,jsx,es6,cjs,ts,tsx}") => vec!(PluginNode {
-              package_name: String::from("@parcel/transformer-js"),
-              resolve_from: Rc::clone(&extended_resolve_from),
-            }),
-            String::from("*.{ts,tsx}") => vec!(PluginNode {
-              package_name: String::from("@scope/parcel-transformer-ts"),
-              resolve_from: Rc::clone(&base_resolve_from),
-            }),
-          }),
-          validators: PipelineMap::new(IndexMap::new()),
-        },
-        base_config: PartialConfigFixture {
-          path: PathBuf::from(base_resolve_from.as_os_str()),
-          parcel_rc: String::from(
-            r#"
-              {
-                "extends": "@parcel/config-default",
-                "reporters": ["...", "@scope/parcel-metrics-reporter"],
-                "transformers": {
-                  "*.{ts,tsx}": [
-                    "@scope/parcel-transformer-ts",
-                    "..."
-                  ]
-                }
-              }
-            "#,
-          ),
-        },
-        extended_config: PartialConfigFixture {
-          path: extended_config.path,
-          parcel_rc: extended_config.parcel_rc,
-        },
-      }
-    }
-
-    pub fn default_extended_config(project_root: &PathBuf) -> ExtendedConfigFixture {
-      let base_resolve_from = Rc::from(project_root.join(".parcelrc"));
-
-      ParcelRcConfigBuilder::extended_config_from(project_root, base_resolve_from)
-    }
-
-    pub fn extended_config(project_root: &PathBuf) -> (String, ExtendedConfigFixture) {
-      let base_resolve_from = Rc::from(
-        project_root
-          .join("node_modules")
-          .join("@config/default")
-          .join("index.json"),
-      );
-
-      (
-        String::from("@config/default"),
-        ParcelRcConfigBuilder::extended_config_from(project_root, base_resolve_from),
-      )
-    }
-  }
-
   mod empty_config_and_fallback {
+    use crate::config::parcel_config_fixtures::{default_config, default_extended_config};
+
     use super::*;
     use std::collections::HashMap;
 
@@ -526,7 +305,7 @@ mod tests {
     #[test]
     fn errors_on_failed_extended_parcelrc_resolution() {
       let project_root = cwd();
-      let config = ParcelRcConfigBuilder::default_extended_config(&project_root);
+      let config = default_extended_config(&project_root);
       let fs = MemoryFileSystem::new(HashMap::from([(
         config.base_config.path.clone(),
         config.base_config.parcel_rc,
@@ -550,87 +329,73 @@ mod tests {
     #[test]
     fn returns_default_parcel_config() {
       let project_root = cwd();
-      let default_config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
+      let default_config = default_config(&Rc::new(project_root.join(".parcelrc")));
+      let files = vec![default_config.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(
-          default_config.path.clone(),
+          default_config.path,
           default_config.parcel_rc,
         )])),
         &MockPackageManager::default(),
       )
       .load(&project_root, None, None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((
-          default_config.parcel_config,
-          vec!(default_config.path.display().to_string())
-        ))
-      );
+      assert_eq!(parcel_config, Ok((default_config.parcel_config, files)));
     }
 
     #[test]
     fn returns_default_parcel_config_from_project_root() {
       let project_root = cwd().join("src").join("packages").join("root");
-      let default_config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
+      let default_config = default_config(&Rc::new(project_root.join(".parcelrc")));
+      let files = vec![default_config.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(
-          default_config.path.clone(),
+          default_config.path,
           default_config.parcel_rc,
         )])),
         &MockPackageManager::default(),
       )
       .load(&project_root, None, None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((
-          default_config.parcel_config,
-          vec!(default_config.path.display().to_string())
-        ))
-      );
+      assert_eq!(parcel_config, Ok((default_config.parcel_config, files)));
     }
 
     #[test]
     fn returns_default_parcel_config_from_project_root_when_outside_cwd() {
       let project_root = PathBuf::from("/root");
-      let default_config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
+      let default_config = default_config(&Rc::new(project_root.join(".parcelrc")));
+      let files = vec![default_config.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(
-          default_config.path.clone(),
+          default_config.path,
           default_config.parcel_rc,
         )])),
         &MockPackageManager::default(),
       )
       .load(&project_root, None, None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((
-          default_config.parcel_config,
-          vec!(default_config.path.display().to_string())
-        ))
-      );
+      assert_eq!(parcel_config, Ok((default_config.parcel_config, files)));
     }
 
-    // TODO
     #[test]
     fn returns_merged_default_parcel_config() {
       let project_root = cwd();
-      let default_config = ParcelRcConfigBuilder::default_extended_config(&project_root);
+      let default_config = default_extended_config(&project_root);
+      let files = vec![
+        default_config.base_config.path.clone(),
+        default_config.extended_config.path.clone(),
+      ];
+
       let fs = MemoryFileSystem::new(HashMap::from([
         (
-          default_config.base_config.path.clone(),
+          default_config.base_config.path,
           default_config.base_config.parcel_rc,
         ),
         (
-          default_config.extended_config.path.clone(),
+          default_config.extended_config.path,
           default_config.extended_config.parcel_rc,
         ),
       ]));
@@ -638,20 +403,13 @@ mod tests {
       let parcel_config =
         ParcelRcConfig::new(&fs, &InMemoryPackageManager::new(&fs)).load(&project_root, None, None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((
-          default_config.parcel_config,
-          vec!(
-            default_config.base_config.path.display().to_string(),
-            default_config.extended_config.path.display().to_string()
-          )
-        ))
-      );
+      assert_eq!(parcel_config, Ok((default_config.parcel_config, files)));
     }
   }
 
   mod config {
+    use crate::config::parcel_config_fixtures::{default_config, extended_config};
+
     use super::*;
     use std::{collections::HashMap, rc::Rc};
 
@@ -680,7 +438,7 @@ mod tests {
     #[test]
     fn errors_on_failed_extended_config_resolution() {
       let project_root = cwd();
-      let (specifier, config) = ParcelRcConfigBuilder::extended_config(&project_root);
+      let (specifier, config) = extended_config(&project_root);
       let fs = MemoryFileSystem::new(HashMap::from([(
         config.base_config.path.clone(),
         config.base_config.parcel_rc,
@@ -744,8 +502,8 @@ mod tests {
         project_root.join("index"),
       );
 
-      let files = vec![config_path.display().to_string()];
-      let specified_config = ParcelRcConfigBuilder::default_config(&Rc::new(config_path));
+      let specified_config = default_config(&Rc::new(config_path));
+      let files = vec![specified_config.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -756,14 +514,13 @@ mod tests {
       )
       .load(&project_root, Some(String::from("@scope/config")), None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((specified_config.parcel_config, files))
-      );
+      assert_eq!(parcel_config, Ok((specified_config.parcel_config, files)));
     }
   }
 
   mod fallback_config {
+    use crate::config::parcel_config_fixtures::{default_config, extended_config};
+
     use super::*;
     use std::{collections::HashMap, rc::Rc};
 
@@ -792,7 +549,7 @@ mod tests {
     #[test]
     fn errors_on_failed_extended_fallback_config_resolution() {
       let project_root = cwd();
-      let (specifier, fallback_config) = ParcelRcConfigBuilder::extended_config(&project_root);
+      let (specifier, fallback_config) = extended_config(&project_root);
 
       let fs = MemoryFileSystem::new(HashMap::from([(
         fallback_config.base_config.path.clone(),
@@ -854,8 +611,7 @@ mod tests {
         project_root.join("index"),
       );
 
-      let project_root_config =
-        ParcelRcConfigBuilder::default_config(&Rc::new(project_root.join(".parcelrc")));
+      let project_root_config = default_config(&Rc::new(project_root.join(".parcelrc")));
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -870,10 +626,10 @@ mod tests {
       .load(&project_root, None, Some(String::from("@scope/config")));
 
       assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
+        parcel_config,
         Ok((
           project_root_config.parcel_config,
-          vec!(project_root_config.path.display().to_string())
+          vec!(project_root_config.path)
         ))
       );
     }
@@ -889,8 +645,8 @@ mod tests {
         project_root.join("index"),
       );
 
-      let files = vec![fallback_config_path.display().to_string()];
-      let fallback = ParcelRcConfigBuilder::default_config(&Rc::new(fallback_config_path));
+      let fallback = default_config(&Rc::new(fallback_config_path));
+      let files = vec![fallback.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([(fallback.path, fallback.parcel_rc)])),
@@ -898,14 +654,13 @@ mod tests {
       )
       .load(&project_root, None, Some(String::from("@scope/config")));
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((fallback.parcel_config, files))
-      );
+      assert_eq!(parcel_config, Ok((fallback.parcel_config, files)));
     }
   }
 
   mod fallback_with_config {
+    use crate::config::parcel_config_fixtures::default_config;
+
     use super::*;
     use std::{collections::HashMap, rc::Rc};
 
@@ -920,8 +675,8 @@ mod tests {
         project_root.join("index"),
       );
 
-      let files = vec![config_path.display().to_string()];
-      let config = ParcelRcConfigBuilder::default_config(&Rc::new(config_path));
+      let config = default_config(&Rc::new(config_path));
+      let files = vec![config.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -932,10 +687,7 @@ mod tests {
       )
       .load(&project_root, Some(String::from("@scope/config")), None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((config.parcel_config, files))
-      );
+      assert_eq!(parcel_config, Ok((config.parcel_config, files)));
     }
 
     #[test]
@@ -949,8 +701,8 @@ mod tests {
         project_root.join("index"),
       );
 
-      let files = vec![fallback_config_path.display().to_string()];
-      let fallback_config = ParcelRcConfigBuilder::default_config(&Rc::new(fallback_config_path));
+      let fallback_config = default_config(&Rc::new(fallback_config_path));
+      let files = vec![fallback_config.path.clone()];
 
       let parcel_config = ParcelRcConfig::new(
         &MemoryFileSystem::new(HashMap::from([
@@ -961,10 +713,7 @@ mod tests {
       )
       .load(&project_root, Some(String::from("@scope/config")), None);
 
-      assert_eq!(
-        parcel_config.map(to_partial_eq_parcel_config),
-        Ok((fallback_config.parcel_config, files))
-      );
+      assert_eq!(parcel_config, Ok((fallback_config.parcel_config, files)));
     }
   }
 
