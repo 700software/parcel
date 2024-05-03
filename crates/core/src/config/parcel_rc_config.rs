@@ -11,6 +11,7 @@ use super::{
   partial_parcel_config::PartialParcelConfig,
 };
 
+/// Loads and validates .parcel_rc config
 pub struct ParcelRcConfig<'a, T, U> {
   fs: &'a T,
   package_manager: &'a U,

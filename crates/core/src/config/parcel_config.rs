@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+  path::{Path, PathBuf},
+  rc::Rc,
+};
 
 use indexmap::IndexMap;
 
@@ -6,9 +9,16 @@ use crate::diagnostic::diagnostic_error::DiagnosticError;
 
 use super::{
   partial_parcel_config::PartialParcelConfig,
-  plugin::{is_match, PipelineMap, PluginNode},
+  pipeline::{is_match, PipelineMap},
 };
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct PluginNode {
+  pub package_name: String,
+  pub resolve_from: Rc<PathBuf>,
+}
+
+/// Represents a fully merged and validated .parcel_rc config
 #[derive(Debug, PartialEq)]
 pub struct ParcelConfig {
   pub(crate) bundler: PluginNode,

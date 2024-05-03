@@ -2,10 +2,9 @@ use std::{path::PathBuf, rc::Rc};
 
 use indexmap::{indexmap, IndexMap};
 
-use super::{
-  parcel_config::ParcelConfig,
-  plugin::{PipelineMap, PluginNode},
-};
+use crate::config::parcel_config::PluginNode;
+
+use super::{parcel_config::ParcelConfig, pipeline::PipelineMap};
 
 pub struct ConfigFixture {
   pub parcel_config: ParcelConfig,
